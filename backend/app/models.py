@@ -67,12 +67,18 @@ class Template(Base):
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     topic_name: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
-    is_custom: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    is_custom: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
-    seed_chips: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
-    card_shape: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    seed_chips: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    card_shape: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
     execution_spec: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
     created_at: Mapped[datetime] = _created_at()
 
@@ -91,6 +97,7 @@ class Room(Base):
     status: Mapped[RoomStatus] = mapped_column(
         Enum(RoomStatus, native_enum=False, length=20, name="room_status"),
         nullable=False,
+        default=RoomStatus.deciding,
         server_default=text(f"'{RoomStatus.deciding.value}'"),
     )
     # Set when a decision locks. Circular FK to suggestions, added via ALTER (use_alter).
@@ -98,7 +105,9 @@ class Room(Base):
         ForeignKey("suggestions.id", ondelete="SET NULL", use_alter=True, name="fk_rooms_decided_suggestion"),
         nullable=True,
     )
-    generation_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    generation_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     created_at: Mapped[datetime] = _created_at()
 
     template: Mapped[Template] = relationship(back_populates="rooms")
@@ -127,6 +136,7 @@ class Member(Base):
     role: Mapped[MemberRole] = mapped_column(
         Enum(MemberRole, native_enum=False, length=20, name="member_role"),
         nullable=False,
+        default=MemberRole.member,
         server_default=text(f"'{MemberRole.member.value}'"),
     )
     session_token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
@@ -167,6 +177,7 @@ class SuggestionSet(Base):
     status: Mapped[SetStatus] = mapped_column(
         Enum(SetStatus, native_enum=False, length=20, name="set_status"),
         nullable=False,
+        default=SetStatus.pending,
         server_default=text(f"'{SetStatus.pending.value}'"),
     )
     created_at: Mapped[datetime] = _created_at()
@@ -188,7 +199,7 @@ class Suggestion(Base):
     rationale: Mapped[str] = mapped_column(Text, nullable=False)
     # "metadata" is reserved on the declarative base, so the attribute is "meta".
     meta: Mapped[dict] = mapped_column(
-        "metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb")
+        "metadata", JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
     created_at: Mapped[datetime] = _created_at()
 
@@ -211,7 +222,7 @@ class Vote(Base):
     member_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    value: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    value: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     created_at: Mapped[datetime] = _created_at()
 
     suggestion: Mapped[Suggestion] = relationship(back_populates="votes")
@@ -233,6 +244,7 @@ class Mission(Base):
     status: Mapped[MissionStatus] = mapped_column(
         Enum(MissionStatus, native_enum=False, length=20, name="mission_status"),
         nullable=False,
+        default=MissionStatus.open,
         server_default=text(f"'{MissionStatus.open.value}'"),
     )
     created_at: Mapped[datetime] = _created_at()

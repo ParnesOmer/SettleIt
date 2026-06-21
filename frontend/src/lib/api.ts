@@ -1,4 +1,11 @@
-import type { HealthResponse } from "@/types/api";
+import type {
+  CreateRoomBody,
+  HealthResponse,
+  Message,
+  RoomPreview,
+  RoomState,
+  Template,
+} from "@/types/api";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 
@@ -38,6 +45,22 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => request<HealthResponse>("/api/health"),
+  getTemplates: () => request<Template[]>("/api/templates"),
+  createRoom: (body: CreateRoomBody) =>
+    request<RoomState>("/api/rooms", { method: "POST", body: JSON.stringify(body) }),
+  getRoomPreview: (code: string) =>
+    request<RoomPreview>(`/api/rooms/by-invite/${encodeURIComponent(code)}`),
+  joinRoom: (code: string, displayName: string) =>
+    request<RoomState>(`/api/rooms/${encodeURIComponent(code)}/join`, {
+      method: "POST",
+      body: JSON.stringify({ display_name: displayName }),
+    }),
+  getRoom: (id: string) => request<RoomState>(`/api/rooms/${id}`),
+  postMessage: (id: string, content: string) =>
+    request<Message>(`/api/rooms/${id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    }),
 };
 
 export { BASE_URL };
