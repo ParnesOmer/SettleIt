@@ -1,1 +1,0 @@
-{"root":["./src/App.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/Avatar.tsx","./src/components/ui/button.tsx","./src/components/ui/input.tsx","./src/lib/api.ts","./src/lib/identity.ts","./src/lib/useRoomSocket.ts","./src/lib/utils.ts","./src/pages/CreateRoom.tsx","./src/pages/JoinRoom.tsx","./src/pages/Room.tsx","./src/types/api.ts"],"version":"5.9.3"}
