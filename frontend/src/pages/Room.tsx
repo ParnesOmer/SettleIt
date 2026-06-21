@@ -5,13 +5,36 @@ import { Check, Loader2, Send, Share2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar } from "@/components/Avatar";
+import { DecisionCelebration } from "@/components/DecisionCelebration";
+import { SuggestionDeck } from "@/components/SuggestionDeck";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, ApiError } from "@/lib/api";
 import { setActiveToken, tokenForRoom } from "@/lib/session";
 import { useRoomSocket } from "@/lib/useRoomSocket";
 import { cn } from "@/lib/utils";
-import type { Member, Message, RoomEvent, RoomState, SeedChip } from "@/types/api";
+import type {
+  Member,
+  Message,
+  RoomEvent,
+  RoomState,
+  RoomStatus,
+  SeedChip,
+  Suggestion,
+  SuggestionSet,
+  VoteResult,
+} from "@/types/api";
+
+function applyVotes(set: SuggestionSet, result: VoteResult): SuggestionSet {
+  return {
+    ...set,
+    suggestions: set.suggestions.map((s) => ({
+      ...s,
+      vote_count: result.tallies[s.id] ?? s.vote_count,
+      backer_ids: result.backers[s.id] ?? s.backer_ids,
+    })),
+  };
+}
 
 export default function Room() {
   const { id } = useParams();
@@ -21,9 +44,16 @@ export default function Room() {
   const [error, setError] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [currentSet, setCurrentSet] = useState<SuggestionSet | null>(null);
+  const [status, setStatus] = useState<RoomStatus>("deciding");
+  const [decidedId, setDecidedId] = useState<string | null>(null);
+  const [generationsLeft, setGenerationsLeft] = useState(3);
   const [draft, setDraft] = useState("");
+  const [refine, setRefine] = useState("");
   const [activeChip, setActiveChip] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [celebration, setCelebration] = useState<Suggestion | null>(null);
 
   const meId = room?.me?.id;
   const isAdmin = room?.me?.role === "admin";
@@ -45,6 +75,10 @@ export default function Room() {
         setRoom(data);
         setMembers(data.members);
         setMessages(data.messages);
+        setCurrentSet(data.current_set);
+        setStatus(data.status);
+        setDecidedId(data.decided_suggestion_id);
+        setGenerationsLeft(data.generations_left);
       })
       .catch((err) => {
         if (!active) return;
@@ -65,12 +99,39 @@ export default function Room() {
 
   const handleEvent = useCallback(
     (event: RoomEvent) => {
-      if (event.type === "message_created") {
-        addMessage(event.payload as Message);
-      } else if (event.type === "member_joined") {
-        const member = event.payload as Member;
-        setMembers((prev) => (prev.some((m) => m.id === member.id) ? prev : [...prev, member]));
-        toast(`${member.display_name} joined`);
+      switch (event.type) {
+        case "message_created":
+          addMessage(event.payload as Message);
+          break;
+        case "member_joined": {
+          const member = event.payload as Member;
+          setMembers((prev) => (prev.some((m) => m.id === member.id) ? prev : [...prev, member]));
+          toast(`${member.display_name} joined`);
+          break;
+        }
+        case "generation_started": {
+          const p = event.payload as { set_id: string; generation_number: number };
+          setCurrentSet({ id: p.set_id, generation_number: p.generation_number, status: "pending", suggestions: [] });
+          break;
+        }
+        case "suggestions_ready": {
+          const set = event.payload as SuggestionSet;
+          setCurrentSet(set);
+          if (set.status === "failed") toast.error("Generation failed — try again.");
+          break;
+        }
+        case "vote_updated": {
+          const result = event.payload as VoteResult;
+          setCurrentSet((prev) => (prev && prev.id === result.set_id ? applyVotes(prev, result) : prev));
+          break;
+        }
+        case "decision_locked": {
+          const p = event.payload as { decided_suggestion_id: string; suggestion: Suggestion };
+          setStatus("decided");
+          setDecidedId(p.decided_suggestion_id);
+          setCelebration(p.suggestion);
+          break;
+        }
       }
     },
     [addMessage],
@@ -86,8 +147,7 @@ export default function Room() {
     const text = content.trim();
     if (!id || text.length === 0) return;
     try {
-      const msg = await api.postMessage(id, text);
-      addMessage(msg);
+      addMessage(await api.postMessage(id, text));
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Message didn't send. Try again.");
     }
@@ -99,13 +159,49 @@ export default function Room() {
     await send(`${chip.label} ${option}`);
   }
 
+  async function handleGenerate() {
+    if (!id || busy) return;
+    setBusy(true);
+    const previous = currentSet;
+    setCurrentSet({ id: "pending", generation_number: (currentSet?.generation_number ?? 0) + 1, status: "pending", suggestions: [] });
+    try {
+      const res = await api.generate(id, refine);
+      setGenerationsLeft(res.generations_left);
+      setRefine("");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't generate. Try again.");
+      setCurrentSet(previous);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleVote(suggestionId: string) {
+    try {
+      const result = await api.vote(suggestionId);
+      setCurrentSet((prev) => (prev && prev.id === result.set_id ? applyVotes(prev, result) : prev));
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Vote didn't register. Try again.");
+    }
+  }
+
+  async function handleLock(suggestionId: string) {
+    if (!id) return;
+    try {
+      await api.decide(id, suggestionId);
+      // The decision_locked event drives the celebration for everyone, including us.
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't lock the decision. Try again.");
+    }
+  }
+
   function shareInvite() {
     if (!room) return;
     const link = `${window.location.origin}/j/${room.invite_code}`;
     navigator.clipboard
       .writeText(link)
       .then(() => toast.success("Invite link copied"))
-      .catch(() => toast.error("Couldn't copy — the link is " + link));
+      .catch(() => toast.error(`Couldn't copy — the link is ${link}`));
   }
 
   if (error) {
@@ -130,6 +226,11 @@ export default function Room() {
 
   const chips = room.template.seed_chips;
   const openChip = chips.find((c) => c.id === activeChip);
+  const decided = status === "decided";
+  const generating = currentSet?.status === "pending";
+  const winner = currentSet?.suggestions.find((s) => s.id === decidedId) ?? null;
+  const canGenerate = isAdmin && !decided && !generating && generationsLeft > 0;
+  const hasSet = Boolean(currentSet);
 
   return (
     <div className="mx-auto flex h-dvh max-w-lg flex-col bg-paper sm:border-x sm:border-border">
@@ -137,7 +238,9 @@ export default function Room() {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h1 className="truncate font-display text-2xl font-bold text-ink">{room.topic}</h1>
-            <p className="mt-0.5 font-mono text-xs text-plum">deciding · {members.length} here</p>
+            <p className="mt-0.5 font-mono text-xs text-plum">
+              {decided ? "decided" : "deciding"} · {members.length} here
+            </p>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <div className="flex">
@@ -156,7 +259,7 @@ export default function Room() {
           </div>
         </div>
 
-        {chips.length > 0 && (
+        {chips.length > 0 && !decided && (
           <div className="mt-3">
             <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
               {chips.map((chip) => {
@@ -168,9 +271,7 @@ export default function Room() {
                     onClick={() => setActiveChip((cur) => (cur === chip.id ? null : chip.id))}
                     className={cn(
                       "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors",
-                      answer
-                        ? "border-plum bg-plum text-white"
-                        : "border-plum/40 text-plum hover:bg-plum/5",
+                      answer ? "border-plum bg-plum text-white" : "border-plum/40 text-plum hover:bg-plum/5",
                     )}
                   >
                     {answer && <Check className="size-3.5" />}
@@ -207,38 +308,80 @@ export default function Room() {
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
-        {messages.length === 0 ? (
+        {decided && winner && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-marigold bg-marigold/10 px-3.5 py-2.5">
+            <Check className="size-4 shrink-0 text-[#9a6212]" />
+            <p className="text-sm text-ink">
+              Decided: <span className="font-medium">{winner.title}</span>
+            </p>
+          </div>
+        )}
+
+        {messages.length === 0 && !hasSet ? (
           <EmptyChat />
         ) : (
           <div className="space-y-2.5">
             {messages.map((msg, i) => {
               const mine = msg.member_id === meId;
               const showName = !mine && (i === 0 || messages[i - 1].member_id !== msg.member_id);
-              return (
-                <MessageBubble key={msg.id} message={msg} mine={mine} showName={showName} />
-              );
+              return <MessageBubble key={msg.id} message={msg} mine={mine} showName={showName} />;
             })}
-            <div ref={bottomRef} />
           </div>
         )}
+
+        <SuggestionDeck
+          set={currentSet}
+          members={members}
+          meId={meId}
+          isAdmin={isAdmin}
+          decided={decided}
+          decidedId={decidedId}
+          onVote={handleVote}
+          onLock={handleLock}
+        />
+
+        {decided && (
+          <p className="mt-5 text-center font-mono text-xs text-muted-foreground">
+            next up: who does what — coming in the next step
+          </p>
+        )}
+
+        <div ref={bottomRef} />
       </div>
 
       <footer className="shrink-0 border-t border-border bg-paper">
-        {isAdmin && (
-          <div className="px-4 pt-3">
+        {isAdmin && !decided && (
+          <div className="space-y-2 px-4 pt-3">
+            {hasSet && generationsLeft > 0 && !generating && (
+              <Input
+                value={refine}
+                onChange={(e) => setRefine(e.target.value)}
+                placeholder="Refine before regenerating (optional)…"
+                maxLength={500}
+              />
+            )}
             <Button
-              variant="outline"
               className="w-full justify-between"
-              disabled
-              title="Suggestions arrive in the next milestone"
+              variant={hasSet ? "outline" : "default"}
+              disabled={!canGenerate}
+              onClick={handleGenerate}
             >
               <span className="flex items-center gap-2">
-                <Sparkles className="size-4" /> Generate suggestions
+                {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                {generating ? "Generating…" : hasSet ? "Regenerate" : "Generate suggestions"}
               </span>
-              <span className="font-mono text-xs text-muted-foreground">soon</span>
+              <span className="font-mono text-xs opacity-80">
+                {generationsLeft > 0 ? `${generationsLeft} of 3 left` : "no generations left"}
+              </span>
             </Button>
+            {hasSet && !generating && (
+              <p className="pb-0.5 text-center text-xs text-muted-foreground">
+                Tap <span className="font-medium text-plum">Lock</span> on a card to settle it.
+              </p>
+            )}
           </div>
         )}
+
         <form
           className="flex items-center gap-2 px-4 py-3"
           onSubmit={(e) => {
@@ -250,7 +393,7 @@ export default function Room() {
           <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Message the huddle…"
+            placeholder={decided ? "Chat about the plan…" : "Message the huddle…"}
             maxLength={2000}
           />
           <Button type="submit" size="icon" disabled={draft.trim().length === 0} aria-label="Send">
@@ -258,6 +401,16 @@ export default function Room() {
           </Button>
         </form>
       </footer>
+
+      <AnimatePresence>
+        {celebration && (
+          <DecisionCelebration
+            suggestion={celebration}
+            members={members}
+            onDone={() => setCelebration(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -278,21 +431,13 @@ function MessageBubble({
       transition={{ duration: 0.2 }}
       className={cn("flex items-end gap-2", mine ? "justify-end" : "justify-start")}
     >
-      {!mine && (
-        <div className="w-7 shrink-0">
-          {showName && <Avatar name={message.author_name} size={28} />}
-        </div>
-      )}
+      {!mine && <div className="w-7 shrink-0">{showName && <Avatar name={message.author_name} size={28} />}</div>}
       <div className={cn("max-w-[78%]", mine && "flex flex-col items-end")}>
-        {showName && (
-          <span className="mb-0.5 ml-1 text-xs font-medium text-plum">{message.author_name}</span>
-        )}
+        {showName && <span className="mb-0.5 ml-1 text-xs font-medium text-plum">{message.author_name}</span>}
         <div
           className={cn(
             "rounded-2xl px-3.5 py-2 text-[15px] leading-snug",
-            mine
-              ? "rounded-br-md bg-plum text-white"
-              : "rounded-bl-md border border-border bg-card text-ink",
+            mine ? "rounded-br-md bg-plum text-white" : "rounded-bl-md border border-border bg-card text-ink",
           )}
         >
           {message.content}

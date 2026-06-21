@@ -1,3 +1,4 @@
+import { MotionConfig } from "framer-motion";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster } from "sonner";
 
@@ -7,14 +8,16 @@ import Room from "@/pages/Room";
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<CreateRoom />} />
-        <Route path="/j/:code" element={<JoinRoom />} />
-        <Route path="/room/:id" element={<Room />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-      <Toaster position="top-center" toastOptions={{ className: "font-sans" }} />
-    </BrowserRouter>
+    <MotionConfig reducedMotion="user">
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<CreateRoom />} />
+          <Route path="/j/:code" element={<JoinRoom />} />
+          <Route path="/room/:id" element={<Room />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+        <Toaster position="top-center" toastOptions={{ className: "font-sans" }} />
+      </BrowserRouter>
+    </MotionConfig>
   );
 }

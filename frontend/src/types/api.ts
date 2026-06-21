@@ -36,15 +36,46 @@ export interface Message {
   created_at: string;
 }
 
+export interface Suggestion {
+  id: string;
+  title: string;
+  rationale: string;
+  metadata: Record<string, string>;
+  vote_count: number;
+  backer_ids: string[];
+}
+
+export interface SuggestionSet {
+  id: string;
+  generation_number: number;
+  status: "pending" | "complete" | "failed";
+  suggestions: Suggestion[];
+}
+
+export interface VoteResult {
+  set_id: string;
+  tallies: Record<string, number>;
+  backers: Record<string, string[]>;
+}
+
+export interface GenerateAccepted {
+  set_id: string;
+  generation_number: number;
+  generations_left: number;
+}
+
 export interface RoomState {
   id: string;
   topic: string;
   invite_code: string;
   status: RoomStatus;
   generation_count: number;
+  generations_left: number;
   template: Template;
   members: Member[];
   messages: Message[];
+  current_set: SuggestionSet | null;
+  decided_suggestion_id: string | null;
   me: Member | null;
   session_token?: string | null;
 }

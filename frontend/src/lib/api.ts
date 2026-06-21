@@ -1,11 +1,13 @@
 import { getActiveToken } from "@/lib/session";
 import type {
   CreateRoomBody,
+  GenerateAccepted,
   HealthResponse,
   Message,
   RoomPreview,
   RoomState,
   Template,
+  VoteResult,
 } from "@/types/api";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
@@ -63,6 +65,18 @@ export const api = {
     request<Message>(`/api/rooms/${id}/messages`, {
       method: "POST",
       body: JSON.stringify({ content }),
+    }),
+  generate: (id: string, refinement?: string) =>
+    request<GenerateAccepted>(`/api/rooms/${id}/generate`, {
+      method: "POST",
+      body: JSON.stringify({ refinement: refinement?.trim() || null }),
+    }),
+  vote: (suggestionId: string) =>
+    request<VoteResult>(`/api/suggestions/${suggestionId}/vote`, { method: "POST" }),
+  decide: (id: string, suggestionId: string) =>
+    request<RoomState>(`/api/rooms/${id}/decide`, {
+      method: "POST",
+      body: JSON.stringify({ suggestion_id: suggestionId }),
     }),
 };
 
