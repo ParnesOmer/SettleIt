@@ -1,0 +1,36 @@
+# Render blueprint for the SettleIt backend (FastAPI). Connect this repo as a Blueprint in Render,
+# then fill the `sync: false` secrets in the dashboard. DB is your Supabase Postgres.
+services:
+  - type: web
+    name: settleit-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    # Migrations run on each start (idempotent); single free instance, so this is safe.
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+      - key: ENV
+        value: production
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false # paste your Supabase connection string
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false # set to your Vercel URL, e.g. https://settleit.vercel.app

@@ -8,6 +8,7 @@ import { Avatar } from "@/components/Avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, ApiError } from "@/lib/api";
+import { setActiveToken, tokenForRoom } from "@/lib/session";
 import { useRoomSocket } from "@/lib/useRoomSocket";
 import { cn } from "@/lib/utils";
 import type { Member, Message, RoomEvent, RoomState, SeedChip } from "@/types/api";
@@ -30,6 +31,8 @@ export default function Room() {
 
   useEffect(() => {
     if (!id) return;
+    const stored = tokenForRoom(id);
+    if (stored) setActiveToken(stored);
     let active = true;
     api
       .getRoom(id)

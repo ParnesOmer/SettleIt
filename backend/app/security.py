@@ -41,5 +41,10 @@ def set_session_cookie(response: Response, token: str) -> None:
     )
 
 
+SESSION_HEADER = "X-Session-Token"
+
+
 def get_session_token(request: Request) -> str | None:
-    return request.cookies.get(SESSION_COOKIE)
+    """Resolve the session token from the header first (works cross-site, e.g. Vercel→Render),
+    falling back to the httpOnly cookie (used for same-origin / local dev)."""
+    return request.headers.get(SESSION_HEADER) or request.cookies.get(SESSION_COOKIE)

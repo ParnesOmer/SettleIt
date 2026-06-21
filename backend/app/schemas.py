@@ -45,16 +45,38 @@ class MessageOut(BaseModel):
     created_at: datetime
 
 
+class SuggestionOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    rationale: str
+    metadata: dict = {}
+    vote_count: int = 0
+    backer_ids: list[uuid.UUID] = []
+
+
+class SuggestionSetOut(BaseModel):
+    id: uuid.UUID
+    generation_number: int
+    status: str
+    suggestions: list[SuggestionOut] = []
+
+
 class RoomState(BaseModel):
     id: uuid.UUID
     topic: str
     invite_code: str
     status: str
     generation_count: int
+    generations_left: int
     template: TemplateOut
     members: list[MemberOut]
     messages: list[MessageOut]
+    current_set: SuggestionSetOut | None = None
+    decided_suggestion_id: uuid.UUID | None = None
     me: MemberOut | None = None
+    # Populated only on create/join so the client can store it and send it back as a header
+    # (cross-site auth where third-party cookies are blocked).
+    session_token: str | None = None
 
 
 class RoomPreview(BaseModel):
@@ -78,3 +100,28 @@ class JoinRoomIn(BaseModel):
 
 class CreateMessageIn(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
+
+
+class GenerateIn(BaseModel):
+    refinement: str | None = Field(default=None, max_length=500)
+
+
+class GenerateAccepted(BaseModel):
+    set_id: uuid.UUID
+    generation_number: int
+    generations_left: int
+
+
+class VoteResult(BaseModel):
+    set_id: uuid.UUID
+    tallies: dict[str, int] = {}
+    backers: dict[str, list[uuid.UUID]] = {}
+
+
+class DecideIn(BaseModel):
+    suggestion_id: uuid.UUID
+
+
+class DecisionLocked(BaseModel):
+    decided_suggestion_id: uuid.UUID
+    suggestion: SuggestionOut

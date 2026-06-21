@@ -8,6 +8,7 @@ import { Avatar } from "@/components/Avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, ApiError } from "@/lib/api";
+import { saveToken } from "@/lib/session";
 import type { RoomPreview } from "@/types/api";
 
 export default function JoinRoom() {
@@ -49,6 +50,7 @@ export default function JoinRoom() {
     setJoining(true);
     try {
       const room = await api.joinRoom(code, name.trim());
+      if (room.session_token) saveToken(room.id, room.session_token);
       toast.success("You're in");
       navigate(`/room/${room.id}`);
     } catch (err) {

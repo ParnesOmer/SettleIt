@@ -1,3 +1,4 @@
+import { getActiveToken } from "@/lib/session";
 import type {
   CreateRoomBody,
   HealthResponse,
@@ -20,10 +21,12 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getActiveToken();
   const response = await fetch(`${BASE_URL}${path}`, {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { "X-Session-Token": token } : {}),
       ...(init?.headers ?? {}),
     },
     ...init,

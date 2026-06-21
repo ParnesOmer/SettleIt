@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, ApiError } from "@/lib/api";
+import { saveToken } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import type { Template } from "@/types/api";
 
@@ -48,6 +49,7 @@ export default function CreateRoom() {
         topic: topic.trim(),
         display_name: name.trim(),
       });
+      if (room.session_token) saveToken(room.id, room.session_token);
       toast.success("Room created");
       navigate(`/room/${room.id}`);
     } catch (error) {

@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api.routes_health import router as health_router
 from .api.routes_rooms import router as rooms_router
+from .api.routes_suggestions import router as suggestions_router
 from .api.routes_templates import router as templates_router
 from .config import get_settings
 from .database import engine
@@ -36,6 +37,7 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(templates_router, prefix="/api")
 app.include_router(rooms_router, prefix="/api")
+app.include_router(suggestions_router, prefix="/api")
 
 
 @app.get("/")

@@ -4,22 +4,28 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_session
-from ..models import MemberRole, Message, Room, Template
+from ..generation import run_generation
+from ..models import MemberRole, Message, Room, RoomStatus, SetStatus, Suggestion, SuggestionSet, Template
 from ..models import Member as MemberModel
 from ..realtime import broadcaster, make_event
 from ..schemas import (
     CreateMessageIn,
     CreateRoomIn,
+    DecideIn,
+    DecisionLocked,
+    GenerateAccepted,
+    GenerateIn,
     JoinRoomIn,
     MemberOut,
     MessageOut,
     RoomPreview,
     RoomState,
+    SuggestionOut,
     TemplateOut,
 )
 from ..security import (
@@ -28,13 +34,20 @@ from ..security import (
     get_session_token,
     set_session_cookie,
 )
+from ..serializers import current_set_out, suggestion_set_out
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
+
+MAX_GENERATIONS = 3
 
 
 def _status_str(value: object) -> str:
     """Normalize a status enum member (or plain string) to its string value."""
     return value.value if hasattr(value, "value") else str(value)
+
+
+def _is_admin(member: MemberModel | None) -> bool:
+    return member is not None and _status_str(member.role) == "admin"
 
 
 async def _get_room_or_404(session: AsyncSession, room_id: uuid.UUID) -> Room:
@@ -108,15 +121,19 @@ async def _build_room_state(
     template = await session.get(Template, room.template_id)
     members = await _members(session, room.id)
     messages = await _message_outs(session, room.id) if me is not None else []
+    current_set = await current_set_out(session, room.id) if me is not None else None
     return RoomState(
         id=room.id,
         topic=room.topic,
         invite_code=room.invite_code,
         status=_status_str(room.status),
         generation_count=room.generation_count,
+        generations_left=max(0, MAX_GENERATIONS - room.generation_count),
         template=TemplateOut.model_validate(template),
         members=[MemberOut.model_validate(m) for m in members],
         messages=messages,
+        current_set=current_set,
+        decided_suggestion_id=room.decided_suggestion_id,
         me=MemberOut.model_validate(me) if me is not None else None,
     )
 
@@ -150,7 +167,9 @@ async def create_room(
     await session.commit()
 
     set_session_cookie(response, token)
-    return await _build_room_state(session, room, admin)
+    state = await _build_room_state(session, room, admin)
+    state.session_token = token
+    return state
 
 
 @router.get("/by-invite/{invite_code}", response_model=RoomPreview)
@@ -204,7 +223,9 @@ async def join_room(
         )
 
     set_session_cookie(response, token)
-    return await _build_room_state(session, room, member)
+    state = await _build_room_state(session, room, member)
+    state.session_token = token
+    return state
 
 
 @router.get("/{room_id}", response_model=RoomState)
@@ -247,3 +268,87 @@ async def post_message(
         str(room.id), make_event("message_created", out.model_dump(mode="json"))
     )
     return out
+
+
+@router.post("/{room_id}/generate", response_model=GenerateAccepted, status_code=202)
+async def generate(
+    room_id: uuid.UUID,
+    body: GenerateIn,
+    request: Request,
+    background: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+) -> GenerateAccepted:
+    room = await _get_room_or_404(session, room_id)
+    me = await _resolve_member(session, room.id, get_session_token(request))
+    if not _is_admin(me):
+        raise HTTPException(status_code=403, detail="Only the host can generate suggestions.")
+    if _status_str(room.status) != "deciding":
+        raise HTTPException(status_code=409, detail="This huddle has already locked a decision.")
+    if room.generation_count >= MAX_GENERATIONS:
+        raise HTTPException(status_code=409, detail="You've used all 3 generations.")
+
+    room.generation_count += 1
+    sset = SuggestionSet(
+        room_id=room.id, generation_number=room.generation_count, status=SetStatus.pending
+    )
+    session.add(sset)
+    await session.flush()
+    set_id, generation_number = sset.id, sset.generation_number
+    await session.commit()
+
+    await broadcaster.broadcast(
+        str(room.id),
+        make_event(
+            "generation_started",
+            {"set_id": str(set_id), "generation_number": generation_number},
+        ),
+    )
+    background.add_task(run_generation, room.id, set_id, body.refinement)
+    return GenerateAccepted(
+        set_id=set_id,
+        generation_number=generation_number,
+        generations_left=max(0, MAX_GENERATIONS - room.generation_count),
+    )
+
+
+@router.post("/{room_id}/decide", response_model=RoomState)
+async def decide(
+    room_id: uuid.UUID,
+    body: DecideIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> RoomState:
+    room = await _get_room_or_404(session, room_id)
+    me = await _resolve_member(session, room.id, get_session_token(request))
+    if not _is_admin(me):
+        raise HTTPException(status_code=403, detail="Only the host can lock the decision.")
+    if _status_str(room.status) != "deciding":
+        raise HTTPException(status_code=409, detail="A decision is already locked.")
+
+    suggestion = await session.get(Suggestion, body.suggestion_id)
+    if suggestion is None:
+        raise HTTPException(status_code=404, detail="That suggestion doesn't exist.")
+    sset = await session.get(SuggestionSet, suggestion.set_id)
+    if sset is None or sset.room_id != room.id:
+        raise HTTPException(status_code=400, detail="That suggestion isn't part of this huddle.")
+
+    room.decided_suggestion_id = suggestion.id
+    room.status = RoomStatus.decided
+    await session.commit()
+
+    set_out = await suggestion_set_out(session, sset.id)
+    winner = next(
+        (s for s in (set_out.suggestions if set_out else []) if s.id == suggestion.id), None
+    )
+    if winner is None:
+        winner = SuggestionOut(
+            id=suggestion.id, title=suggestion.title, rationale=suggestion.rationale, metadata=suggestion.meta or {}
+        )
+    await broadcaster.broadcast(
+        str(room.id),
+        make_event(
+            "decision_locked",
+            DecisionLocked(decided_suggestion_id=suggestion.id, suggestion=winner).model_dump(mode="json"),
+        ),
+    )
+    return await _build_room_state(session, room, me)

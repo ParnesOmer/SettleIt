@@ -46,6 +46,7 @@ export interface RoomState {
   members: Member[];
   messages: Message[];
   me: Member | null;
+  session_token?: string | null;
 }
 
 export interface RoomPreview {
