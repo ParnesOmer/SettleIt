@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16
+    container_name: settleit-db
+    environment:
+      POSTGRES_USER: settleit
+      POSTGRES_PASSWORD: settleit
+      POSTGRES_DB: settleit
+    ports:
+      # Host 5433 → container 5432 (host 5432 is often taken by another local Postgres).
+      - "5433:5432"
+    volumes:
+      - settleit_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U settleit -d settleit"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  settleit_pgdata:

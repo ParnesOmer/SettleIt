@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 33 43% 96%;
+    --foreground: 258 30% 19%;
+    --card: 0 0% 100%;
+    --card-foreground: 258 30% 19%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 258 30% 19%;
+    --primary: 33 89% 59%;
+    --primary-foreground: 258 30% 19%;
+    --secondary: 255 30% 42%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 33 25% 92%;
+    --muted-foreground: 258 12% 42%;
+    --accent: 255 30% 94%;
+    --accent-foreground: 255 30% 30%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 258 16% 88%;
+    --input: 258 16% 85%;
+    --ring: 33 89% 59%;
+    --radius: 0.9rem;
+  }
+
+  .dark {
+    --background: 258 30% 12%;
+    --foreground: 33 30% 94%;
+    --card: 258 28% 16%;
+    --card-foreground: 33 30% 94%;
+    --popover: 258 28% 16%;
+    --popover-foreground: 33 30% 94%;
+    --primary: 33 89% 59%;
+    --primary-foreground: 258 30% 12%;
+    --secondary: 255 25% 60%;
+    --secondary-foreground: 258 30% 12%;
+    --muted: 258 20% 22%;
+    --muted-foreground: 33 15% 70%;
+    --accent: 258 22% 24%;
+    --accent-foreground: 33 30% 92%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 258 18% 26%;
+    --input: 258 18% 26%;
+    --ring: 33 89% 59%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
