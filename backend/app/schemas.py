@@ -61,6 +61,23 @@ class SuggestionSetOut(BaseModel):
     suggestions: list[SuggestionOut] = []
 
 
+class MissionResourceOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    url: str
+    note: str | None = None
+
+
+class MissionOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    description: str
+    status: str
+    assigned_member_id: uuid.UUID | None = None
+    assignee_name: str | None = None
+    resources: list[MissionResourceOut] = []
+
+
 class RoomState(BaseModel):
     id: uuid.UUID
     topic: str
@@ -73,6 +90,7 @@ class RoomState(BaseModel):
     messages: list[MessageOut]
     current_set: SuggestionSetOut | None = None
     decided_suggestion_id: uuid.UUID | None = None
+    missions: list[MissionOut] = []
     me: MemberOut | None = None
     # Populated only on create/join so the client can store it and send it back as a header
     # (cross-site auth where third-party cookies are blocked).

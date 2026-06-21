@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Avatar } from "@/components/Avatar";
 import { DecisionCelebration } from "@/components/DecisionCelebration";
+import { MissionsBoard } from "@/components/MissionsBoard";
 import { SuggestionDeck } from "@/components/SuggestionDeck";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ import { cn } from "@/lib/utils";
 import type {
   Member,
   Message,
+  Mission,
   RoomEvent,
   RoomState,
   RoomStatus,
@@ -45,6 +47,7 @@ export default function Room() {
   const [members, setMembers] = useState<Member[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentSet, setCurrentSet] = useState<SuggestionSet | null>(null);
+  const [missions, setMissions] = useState<Mission[]>([]);
   const [status, setStatus] = useState<RoomStatus>("deciding");
   const [decidedId, setDecidedId] = useState<string | null>(null);
   const [generationsLeft, setGenerationsLeft] = useState(3);
@@ -76,6 +79,7 @@ export default function Room() {
         setMembers(data.members);
         setMessages(data.messages);
         setCurrentSet(data.current_set);
+        setMissions(data.missions);
         setStatus(data.status);
         setDecidedId(data.decided_suggestion_id);
         setGenerationsLeft(data.generations_left);
@@ -130,6 +134,17 @@ export default function Room() {
           setStatus("decided");
           setDecidedId(p.decided_suggestion_id);
           setCelebration(p.suggestion);
+          break;
+        }
+        case "missions_ready": {
+          const p = event.payload as { status: RoomStatus; missions: Mission[] };
+          setMissions(p.missions);
+          setStatus(p.status);
+          break;
+        }
+        case "mission_updated": {
+          const mission = event.payload as Mission;
+          setMissions((prev) => prev.map((m) => (m.id === mission.id ? mission : m)));
           break;
         }
       }
@@ -195,6 +210,36 @@ export default function Room() {
     }
   }
 
+  function updateMission(m: Mission) {
+    setMissions((prev) => prev.map((x) => (x.id === m.id ? m : x)));
+  }
+
+  async function handleClaim(missionId: string) {
+    try {
+      updateMission(await api.claimMission(missionId));
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't update that mission.");
+    }
+  }
+
+  async function handleComplete(missionId: string) {
+    try {
+      updateMission(await api.completeMission(missionId));
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't update that mission.");
+    }
+  }
+
+  async function handleAssignRandom() {
+    if (!id) return;
+    try {
+      setMissions(await api.assignRandom(id));
+      toast.success("Leftovers assigned");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't assign missions.");
+    }
+  }
+
   function shareInvite() {
     if (!room) return;
     const link = `${window.location.origin}/j/${room.invite_code}`;
@@ -226,10 +271,10 @@ export default function Room() {
 
   const chips = room.template.seed_chips;
   const openChip = chips.find((c) => c.id === activeChip);
-  const decided = status === "decided";
+  const postDecision = status === "decided" || status === "executing";
   const generating = currentSet?.status === "pending";
   const winner = currentSet?.suggestions.find((s) => s.id === decidedId) ?? null;
-  const canGenerate = isAdmin && !decided && !generating && generationsLeft > 0;
+  const canGenerate = isAdmin && status === "deciding" && !generating && generationsLeft > 0;
   const hasSet = Boolean(currentSet);
 
   return (
@@ -239,7 +284,7 @@ export default function Room() {
           <div className="min-w-0">
             <h1 className="truncate font-display text-2xl font-bold text-ink">{room.topic}</h1>
             <p className="mt-0.5 font-mono text-xs text-plum">
-              {decided ? "decided" : "deciding"} · {members.length} here
+              {postDecision ? "decided" : "deciding"} · {members.length} here
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
@@ -259,7 +304,7 @@ export default function Room() {
           </div>
         </div>
 
-        {chips.length > 0 && !decided && (
+        {chips.length > 0 && !postDecision && (
           <div className="mt-3">
             <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
               {chips.map((chip) => {
@@ -308,7 +353,7 @@ export default function Room() {
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
-        {decided && winner && (
+        {postDecision && winner && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-marigold bg-marigold/10 px-3.5 py-2.5">
             <Check className="size-4 shrink-0 text-[#9a6212]" />
             <p className="text-sm text-ink">
@@ -317,40 +362,54 @@ export default function Room() {
           </div>
         )}
 
-        {messages.length === 0 && !hasSet ? (
+        {postDecision && (
+          <MissionsBoard
+            missions={missions}
+            meId={meId}
+            onClaim={handleClaim}
+            onComplete={handleComplete}
+            onAssignRandom={handleAssignRandom}
+          />
+        )}
+
+        {messages.length === 0 && !hasSet && !postDecision ? (
           <EmptyChat />
         ) : (
-          <div className="space-y-2.5">
-            {messages.map((msg, i) => {
-              const mine = msg.member_id === meId;
-              const showName = !mine && (i === 0 || messages[i - 1].member_id !== msg.member_id);
-              return <MessageBubble key={msg.id} message={msg} mine={mine} showName={showName} />;
-            })}
+          <div className={postDecision ? "mt-7" : undefined}>
+            {postDecision && (
+              <div className="mb-2.5 flex items-center gap-2">
+                <span className="font-mono text-xs uppercase tracking-wide text-plum">Chat</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+            )}
+            <div className="space-y-2.5">
+              {messages.map((msg, i) => {
+                const mine = msg.member_id === meId;
+                const showName = !mine && (i === 0 || messages[i - 1].member_id !== msg.member_id);
+                return <MessageBubble key={msg.id} message={msg} mine={mine} showName={showName} />;
+              })}
+            </div>
           </div>
         )}
 
-        <SuggestionDeck
-          set={currentSet}
-          members={members}
-          meId={meId}
-          isAdmin={isAdmin}
-          decided={decided}
-          decidedId={decidedId}
-          onVote={handleVote}
-          onLock={handleLock}
-        />
-
-        {decided && (
-          <p className="mt-5 text-center font-mono text-xs text-muted-foreground">
-            next up: who does what — coming in the next step
-          </p>
+        {status === "deciding" && (
+          <SuggestionDeck
+            set={currentSet}
+            members={members}
+            meId={meId}
+            isAdmin={isAdmin}
+            decided={false}
+            decidedId={decidedId}
+            onVote={handleVote}
+            onLock={handleLock}
+          />
         )}
 
         <div ref={bottomRef} />
       </div>
 
       <footer className="shrink-0 border-t border-border bg-paper">
-        {isAdmin && !decided && (
+        {isAdmin && status === "deciding" && (
           <div className="space-y-2 px-4 pt-3">
             {hasSet && generationsLeft > 0 && !generating && (
               <Input
@@ -393,7 +452,7 @@ export default function Room() {
           <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder={decided ? "Chat about the plan…" : "Message the huddle…"}
+            placeholder={postDecision ? "Chat about the plan…" : "Message the huddle…"}
             maxLength={2000}
           />
           <Button type="submit" size="icon" disabled={draft.trim().length === 0} aria-label="Send">

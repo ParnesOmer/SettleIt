@@ -9,8 +9,14 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import Suggestion, SuggestionSet, Vote
-from .schemas import SuggestionOut, SuggestionSetOut, VoteResult
+from .models import Member, Mission, MissionResource, Suggestion, SuggestionSet, Vote
+from .schemas import (
+    MissionOut,
+    MissionResourceOut,
+    SuggestionOut,
+    SuggestionSetOut,
+    VoteResult,
+)
 
 
 def _value(status: object) -> str:
@@ -71,6 +77,40 @@ async def latest_set(session: AsyncSession, room_id: uuid.UUID) -> SuggestionSet
 async def current_set_out(session: AsyncSession, room_id: uuid.UUID) -> SuggestionSetOut | None:
     sset = await latest_set(session, room_id)
     return await suggestion_set_out(session, sset.id) if sset else None
+
+
+async def mission_out(session: AsyncSession, mission: Mission) -> MissionOut:
+    resources = list(
+        await session.scalars(
+            select(MissionResource)
+            .where(MissionResource.mission_id == mission.id)
+            .order_by(MissionResource.created_at)
+        )
+    )
+    assignee_name = None
+    if mission.assigned_member_id is not None:
+        member = await session.get(Member, mission.assigned_member_id)
+        assignee_name = member.display_name if member else None
+    return MissionOut(
+        id=mission.id,
+        title=mission.title,
+        description=mission.description,
+        status=_value(mission.status),
+        assigned_member_id=mission.assigned_member_id,
+        assignee_name=assignee_name,
+        resources=[
+            MissionResourceOut(id=r.id, title=r.title, url=r.url, note=r.note) for r in resources
+        ],
+    )
+
+
+async def missions_out(session: AsyncSession, room_id: uuid.UUID) -> list[MissionOut]:
+    missions = list(
+        await session.scalars(
+            select(Mission).where(Mission.room_id == room_id).order_by(Mission.created_at)
+        )
+    )
+    return [await mission_out(session, m) for m in missions]
 
 
 async def vote_result(session: AsyncSession, set_id: uuid.UUID) -> VoteResult:

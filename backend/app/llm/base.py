@@ -20,6 +20,12 @@ class Card(TypedDict):
     metadata: dict
 
 
+class MissionSpec(TypedDict):
+    title: str
+    description: str
+    search_query: str
+
+
 class GenerationError(Exception):
     """Raised when a provider cannot produce valid cards."""
 
@@ -39,6 +45,17 @@ class LLMProvider(Protocol):
         generation_number: int,
     ) -> list[Card]:
         """Read the room and return structured suggestion cards."""
+        ...
+
+    async def generate_missions(
+        self,
+        *,
+        decision_title: str,
+        topic: str,
+        mission_strategy: str,
+        count: int,
+    ) -> list[MissionSpec]:
+        """Turn the locked decision into concrete missions, each with an optional search query."""
         ...
 
 
@@ -93,6 +110,41 @@ def coerce_cards(raw: object, keys: list[str]) -> list[Card]:
     return cards
 
 
+def build_missions_prompt(
+    decision_title: str, topic: str, mission_strategy: str, count: int
+) -> str:
+    parts = [f"The group was deciding: {topic}.", f"They locked in: {decision_title}."]
+    if mission_strategy:
+        parts.append(f"How to break it into next steps: {mission_strategy}")
+    parts.append(
+        f"Propose exactly {count} concrete missions that make this actually happen. Each has a "
+        "short action title, a one-sentence description of what to do, and a 'search_query' that "
+        "would find genuinely useful links to get started — or an empty string if web links "
+        "wouldn't help that mission."
+    )
+    return "\n".join(parts)
+
+
+def coerce_missions(raw: object) -> list[MissionSpec]:
+    if isinstance(raw, dict):
+        raw = raw.get("missions") or raw.get("items") or []
+    missions: list[MissionSpec] = []
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title", "")).strip()
+        if not title:
+            continue
+        missions.append(
+            {
+                "title": title[:200],
+                "description": str(item.get("description", "")).strip(),
+                "search_query": str(item.get("search_query", "") or "").strip(),
+            }
+        )
+    return missions
+
+
 class FallbackProvider:
     """Tries each provider in order; on any failure (quota, parse, network) moves to the next."""
 
@@ -106,6 +158,15 @@ class FallbackProvider:
         for provider in self._providers:
             try:
                 return await provider.generate_cards(**kwargs)
+            except Exception as error:  # noqa: BLE001 — intentional: fall through to next provider
+                last_error = error
+        raise GenerationError(f"all providers failed: {last_error}")
+
+    async def generate_missions(self, **kwargs) -> list[MissionSpec]:
+        last_error: Exception | None = None
+        for provider in self._providers:
+            try:
+                return await provider.generate_missions(**kwargs)
             except Exception as error:  # noqa: BLE001 — intentional: fall through to next provider
                 last_error = error
         raise GenerationError(f"all providers failed: {last_error}")

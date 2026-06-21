@@ -64,6 +64,25 @@ export interface GenerateAccepted {
   generations_left: number;
 }
 
+export type MissionStatus = "open" | "claimed" | "done";
+
+export interface MissionResource {
+  id: string;
+  title: string;
+  url: string;
+  note?: string | null;
+}
+
+export interface Mission {
+  id: string;
+  title: string;
+  description: string;
+  status: MissionStatus;
+  assigned_member_id: string | null;
+  assignee_name: string | null;
+  resources: MissionResource[];
+}
+
 export interface RoomState {
   id: string;
   topic: string;
@@ -76,6 +95,7 @@ export interface RoomState {
   messages: Message[];
   current_set: SuggestionSet | null;
   decided_suggestion_id: string | null;
+  missions: Mission[];
   me: Member | null;
   session_token?: string | null;
 }

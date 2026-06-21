@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 
-from .base import Card, TranscriptLine
+from .base import Card, MissionSpec, TranscriptLine
 
 _CATALOG: list[Card] = [
     {"title": "Dune: Part Two", "rationale": "Big-screen spectacle everyone's been meaning to catch.", "metadata": {"year": "2024", "runtime": "2h 46m", "where_to_watch": "Max"}},
@@ -48,3 +48,36 @@ class StubProvider:
                 {"title": pick["title"], "rationale": rationale, "metadata": dict(pick["metadata"])}
             )
         return cards
+
+    async def generate_missions(
+        self,
+        *,
+        decision_title: str,
+        topic: str,
+        mission_strategy: str,
+        count: int,
+    ) -> list[MissionSpec]:
+        await asyncio.sleep(1.0)
+        missions: list[MissionSpec] = [
+            {
+                "title": "Lock the showing",
+                "description": f"Pick where and when to watch {decision_title}.",
+                "search_query": f"where to watch {decision_title}",
+            },
+            {
+                "title": "Sort the snacks",
+                "description": "Decide on snacks and drinks, and who brings what.",
+                "search_query": "easy movie night snacks",
+            },
+            {
+                "title": "Rally everyone",
+                "description": "Confirm who's coming and share the final plan.",
+                "search_query": "",
+            },
+            {
+                "title": "Set the mood",
+                "description": f"Queue up {decision_title} and get the room ready.",
+                "search_query": "",
+            },
+        ]
+        return missions[:count]

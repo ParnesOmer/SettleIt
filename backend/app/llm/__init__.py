@@ -20,6 +20,9 @@ def get_provider() -> LLMProvider:
     settings = get_settings()
     primary = (settings.llm_provider or "stub").lower()
 
+    if primary == "stub":
+        return StubProvider()
+
     available: dict[str, LLMProvider] = {}
     if settings.gemini_api_key:
         from .gemini import GeminiProvider

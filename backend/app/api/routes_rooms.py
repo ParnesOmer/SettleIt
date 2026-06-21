@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
@@ -9,8 +10,20 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_session
+from ..execution import run_mission_proposal
 from ..generation import run_generation
-from ..models import MemberRole, Message, Room, RoomStatus, SetStatus, Suggestion, SuggestionSet, Template
+from ..models import (
+    MemberRole,
+    Message,
+    Mission,
+    MissionStatus,
+    Room,
+    RoomStatus,
+    SetStatus,
+    Suggestion,
+    SuggestionSet,
+    Template,
+)
 from ..models import Member as MemberModel
 from ..realtime import broadcaster, make_event
 from ..schemas import (
@@ -23,6 +36,7 @@ from ..schemas import (
     JoinRoomIn,
     MemberOut,
     MessageOut,
+    MissionOut,
     RoomPreview,
     RoomState,
     SuggestionOut,
@@ -34,7 +48,7 @@ from ..security import (
     get_session_token,
     set_session_cookie,
 )
-from ..serializers import current_set_out, suggestion_set_out
+from ..serializers import current_set_out, mission_out, missions_out, suggestion_set_out
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
@@ -122,6 +136,7 @@ async def _build_room_state(
     members = await _members(session, room.id)
     messages = await _message_outs(session, room.id) if me is not None else []
     current_set = await current_set_out(session, room.id) if me is not None else None
+    missions = await missions_out(session, room.id) if me is not None else []
     return RoomState(
         id=room.id,
         topic=room.topic,
@@ -134,6 +149,7 @@ async def _build_room_state(
         messages=messages,
         current_set=current_set,
         decided_suggestion_id=room.decided_suggestion_id,
+        missions=missions,
         me=MemberOut.model_validate(me) if me is not None else None,
     )
 
@@ -316,6 +332,7 @@ async def decide(
     room_id: uuid.UUID,
     body: DecideIn,
     request: Request,
+    background: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> RoomState:
     room = await _get_room_or_404(session, room_id)
@@ -351,4 +368,44 @@ async def decide(
             DecisionLocked(decided_suggestion_id=suggestion.id, suggestion=winner).model_dump(mode="json"),
         ),
     )
+    # Kick off mission proposal (AI + grounded links); it flips the room to 'executing'.
+    background.add_task(run_mission_proposal, room.id)
     return await _build_room_state(session, room, me)
+
+
+@router.post("/{room_id}/assign-random", response_model=list[MissionOut])
+async def assign_random(
+    room_id: uuid.UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> list[MissionOut]:
+    room = await _get_room_or_404(session, room_id)
+    me = await _resolve_member(session, room.id, get_session_token(request))
+    if me is None:
+        raise HTTPException(status_code=403, detail="Join the huddle to assign missions.")
+
+    members = await _members(session, room.id)
+    open_missions = list(
+        await session.scalars(
+            select(Mission).where(
+                Mission.room_id == room.id, Mission.assigned_member_id.is_(None)
+            )
+        )
+    )
+    if open_missions and members:
+        shuffled = members[:]
+        random.shuffle(shuffled)
+        for i, mission in enumerate(open_missions):
+            mission.assigned_member_id = shuffled[i % len(shuffled)].id
+            mission.status = MissionStatus.claimed
+        await session.commit()
+
+    payload = await missions_out(session, room.id)
+    await broadcaster.broadcast(
+        str(room.id),
+        make_event(
+            "missions_ready",
+            {"status": _status_str(room.status), "missions": [m.model_dump(mode="json") for m in payload]},
+        ),
+    )
+    return payload

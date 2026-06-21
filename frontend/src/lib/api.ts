@@ -4,6 +4,7 @@ import type {
   GenerateAccepted,
   HealthResponse,
   Message,
+  Mission,
   RoomPreview,
   RoomState,
   Template,
@@ -78,6 +79,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ suggestion_id: suggestionId }),
     }),
+  claimMission: (missionId: string) =>
+    request<Mission>(`/api/missions/${missionId}/claim`, { method: "POST" }),
+  completeMission: (missionId: string) =>
+    request<Mission>(`/api/missions/${missionId}/complete`, { method: "POST" }),
+  assignRandom: (id: string) =>
+    request<Mission[]>(`/api/rooms/${id}/assign-random`, { method: "POST" }),
 };
 
 export { BASE_URL };
