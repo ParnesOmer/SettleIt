@@ -40,6 +40,12 @@ class MemberRole(str, enum.Enum):
     member = "member"
 
 
+class MemberStatus(str, enum.Enum):
+    active = "active"
+    pending = "pending"
+    removed = "removed"
+
+
 class SetStatus(str, enum.Enum):
     pending = "pending"
     complete = "complete"
@@ -94,6 +100,9 @@ class Room(Base):
     )
     topic: Mapped[str] = mapped_column(String(200), nullable=False)
     invite_code: Mapped[str] = mapped_column(String(16), nullable=False, unique=True, index=True)
+    requires_approval: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     status: Mapped[RoomStatus] = mapped_column(
         Enum(RoomStatus, native_enum=False, length=20, name="room_status"),
         nullable=False,
@@ -139,6 +148,12 @@ class Member(Base):
         nullable=False,
         default=MemberRole.member,
         server_default=text(f"'{MemberRole.member.value}'"),
+    )
+    status: Mapped[MemberStatus] = mapped_column(
+        Enum(MemberStatus, native_enum=False, length=20, name="member_status"),
+        nullable=False,
+        default=MemberStatus.active,
+        server_default=text(f"'{MemberStatus.active.value}'"),
     )
     session_token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     created_at: Mapped[datetime] = _created_at()

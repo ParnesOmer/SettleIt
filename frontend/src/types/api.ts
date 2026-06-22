@@ -2,6 +2,7 @@
 
 export type RoomStatus = "deciding" | "decided" | "executing";
 export type MemberRole = "admin" | "member";
+export type MemberStatus = "active" | "pending" | "removed";
 
 export interface HealthResponse {
   status: string;
@@ -25,6 +26,7 @@ export interface Member {
   id: string;
   display_name: string;
   role: MemberRole;
+  status: MemberStatus;
   created_at: string;
 }
 
@@ -97,6 +99,8 @@ export interface RoomState {
   decided_suggestion_id: string | null;
   missions: Mission[];
   closed_at: string | null;
+  requires_approval: boolean;
+  pending_members: Member[];
   me: Member | null;
   session_token?: string | null;
 }
@@ -128,7 +132,10 @@ export type RoomEventType =
   | "mission_updated"
   | "template_ready"
   | "room_closed"
-  | "room_deleted";
+  | "room_deleted"
+  | "member_pending"
+  | "member_removed"
+  | "member_approved";
 
 export interface RoomEvent<T = unknown> {
   type: RoomEventType;

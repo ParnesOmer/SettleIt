@@ -26,6 +26,9 @@ EventType = Literal[
     "template_ready",
     "room_closed",
     "room_deleted",
+    "member_removed",
+    "member_pending",
+    "member_approved",
 ]
 
 

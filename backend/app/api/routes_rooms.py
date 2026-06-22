@@ -15,6 +15,7 @@ from ..execution import run_mission_proposal
 from ..generation import run_generation
 from ..models import (
     MemberRole,
+    MemberStatus,
     Message,
     Mission,
     MissionStatus,
@@ -28,6 +29,7 @@ from ..models import (
 from ..models import Member as MemberModel
 from ..realtime import broadcaster, make_event
 from ..schemas import (
+    ApprovalIn,
     CreateCustomRoomIn,
     CreateMessageIn,
     CreateRoomIn,
@@ -63,8 +65,12 @@ def _status_str(value: object) -> str:
     return value.value if hasattr(value, "value") else str(value)
 
 
+def _is_active(member: MemberModel | None) -> bool:
+    return member is not None and _status_str(member.status) == "active"
+
+
 def _is_admin(member: MemberModel | None) -> bool:
-    return member is not None and _status_str(member.role) == "admin"
+    return _is_active(member) and _status_str(member.role) == "admin"
 
 
 def _ensure_open(room: Room) -> None:
@@ -91,7 +97,16 @@ async def _get_room_by_invite_or_404(session: AsyncSession, invite_code: str) ->
 async def _members(session: AsyncSession, room_id: uuid.UUID) -> list[MemberModel]:
     result = await session.scalars(
         select(MemberModel)
-        .where(MemberModel.room_id == room_id)
+        .where(MemberModel.room_id == room_id, MemberModel.status == MemberStatus.active)
+        .order_by(MemberModel.created_at)
+    )
+    return list(result)
+
+
+async def _pending_members(session: AsyncSession, room_id: uuid.UUID) -> list[MemberModel]:
+    result = await session.scalars(
+        select(MemberModel)
+        .where(MemberModel.room_id == room_id, MemberModel.status == MemberStatus.pending)
         .order_by(MemberModel.created_at)
     )
     return list(result)
@@ -141,10 +156,17 @@ async def _build_room_state(
     session: AsyncSession, room: Room, me: MemberModel | None
 ) -> RoomState:
     template = await session.get(Template, room.template_id)
+    # Removed members are treated as non-members.
+    if me is not None and _status_str(me.status) == "removed":
+        me = None
+    active = _is_active(me)
+    admin = _is_admin(me)
+
     members = await _members(session, room.id)
-    messages = await _message_outs(session, room.id) if me is not None else []
-    current_set = await current_set_out(session, room.id) if me is not None else None
-    missions = await missions_out(session, room.id) if me is not None else []
+    pending = await _pending_members(session, room.id) if admin else []
+    messages = await _message_outs(session, room.id) if active else []
+    current_set = await current_set_out(session, room.id) if active else None
+    missions = await missions_out(session, room.id) if active else []
     return RoomState(
         id=room.id,
         topic=room.topic,
@@ -159,6 +181,8 @@ async def _build_room_state(
         decided_suggestion_id=room.decided_suggestion_id,
         missions=missions,
         closed_at=room.closed_at,
+        requires_approval=room.requires_approval,
+        pending_members=[MemberOut.model_validate(m) for m in pending],
         me=MemberOut.model_validate(me) if me is not None else None,
     )
 
@@ -250,8 +274,8 @@ async def preview_room(
 ) -> RoomPreview:
     room = await _get_room_by_invite_or_404(session, invite_code)
     members = await _members(session, room.id)
-    token = get_session_token(request)
-    already_member = bool(token) and any(m.session_token == token for m in members)
+    me = await _resolve_member(session, room.id, get_session_token(request))
+    already_member = me is not None and _status_str(me.status) != "removed"
     return RoomPreview(
         id=room.id,
         topic=room.topic,
@@ -274,13 +298,17 @@ async def join_room(
 
     token = get_session_token(request)
     member = await _resolve_member(session, room.id, token)
+    if member is not None and _status_str(member.status) == "removed":
+        member = None  # a removed person can re-join as a fresh membership
 
     if member is None:
         token = generate_session_token()
+        pending = room.requires_approval
         member = MemberModel(
             room_id=room.id,
             display_name=body.display_name.strip(),
             role=MemberRole.member,
+            status=MemberStatus.pending if pending else MemberStatus.active,
             session_token=token,
         )
         session.add(member)
@@ -289,7 +317,10 @@ async def join_room(
         await session.commit()
         await broadcaster.broadcast(
             str(room.id),
-            make_event("member_joined", MemberOut.model_validate(member).model_dump(mode="json")),
+            make_event(
+                "member_pending" if pending else "member_joined",
+                MemberOut.model_validate(member).model_dump(mode="json"),
+            ),
         )
 
     set_session_cookie(response, token)
@@ -318,7 +349,7 @@ async def post_message(
 ) -> MessageOut:
     room = await _get_room_or_404(session, room_id)
     me = await _resolve_member(session, room.id, get_session_token(request))
-    if me is None:
+    if not _is_active(me):
         raise HTTPException(status_code=403, detail="Join the huddle to chat.")
     _ensure_open(room)
 
@@ -519,3 +550,83 @@ async def delete_room(
 
     await session.commit()
     return Response(status_code=204)
+
+
+@router.post("/{room_id}/members/{member_id}/remove", response_model=RoomState)
+async def remove_member(
+    room_id: uuid.UUID,
+    member_id: uuid.UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> RoomState:
+    room = await _get_room_or_404(session, room_id)
+    me = await _resolve_member(session, room.id, get_session_token(request))
+    if not _is_admin(me):
+        raise HTTPException(status_code=403, detail="Only the host can remove people.")
+    if me is not None and me.id == member_id:
+        raise HTTPException(status_code=400, detail="You can't remove yourself.")
+    target = await session.get(MemberModel, member_id)
+    if target is None or target.room_id != room.id:
+        raise HTTPException(status_code=404, detail="That person isn't in this huddle.")
+
+    target.status = MemberStatus.removed
+    await session.commit()
+    await broadcaster.broadcast(
+        str(room.id), make_event("member_removed", {"member_id": str(member_id)})
+    )
+    return await _build_room_state(session, room, me)
+
+
+@router.post("/{room_id}/members/{member_id}/approve", response_model=RoomState)
+async def approve_member(
+    room_id: uuid.UUID,
+    member_id: uuid.UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> RoomState:
+    room = await _get_room_or_404(session, room_id)
+    me = await _resolve_member(session, room.id, get_session_token(request))
+    if not _is_admin(me):
+        raise HTTPException(status_code=403, detail="Only the host can approve people.")
+    target = await session.get(MemberModel, member_id)
+    if target is None or target.room_id != room.id:
+        raise HTTPException(status_code=404, detail="That person isn't in this huddle.")
+
+    if _status_str(target.status) == "pending":
+        target.status = MemberStatus.active
+        await session.commit()
+        payload = MemberOut.model_validate(target).model_dump(mode="json")
+        await broadcaster.broadcast(str(room.id), make_event("member_joined", payload))
+        await broadcaster.broadcast(str(room.id), make_event("member_approved", payload))
+    return await _build_room_state(session, room, me)
+
+
+@router.post("/{room_id}/rotate-invite", response_model=RoomState)
+async def rotate_invite(
+    room_id: uuid.UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> RoomState:
+    room = await _get_room_or_404(session, room_id)
+    me = await _resolve_member(session, room.id, get_session_token(request))
+    if not _is_admin(me):
+        raise HTTPException(status_code=403, detail="Only the host can change the invite link.")
+    room.invite_code = await _unique_invite_code(session)
+    await session.commit()
+    return await _build_room_state(session, room, me)
+
+
+@router.post("/{room_id}/approval", response_model=RoomState)
+async def set_approval(
+    room_id: uuid.UUID,
+    body: ApprovalIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> RoomState:
+    room = await _get_room_or_404(session, room_id)
+    me = await _resolve_member(session, room.id, get_session_token(request))
+    if not _is_admin(me):
+        raise HTTPException(status_code=403, detail="Only the host can change this setting.")
+    room.requires_approval = body.requires_approval
+    await session.commit()
+    return await _build_room_state(session, room, me)

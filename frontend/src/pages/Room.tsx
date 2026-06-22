@@ -1,11 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { Archive, Check, Loader2, MoreVertical, Send, Share2, Sparkles, Trash2 } from "lucide-react";
+import {
+  Archive,
+  Check,
+  Loader2,
+  MoreVertical,
+  Send,
+  Share2,
+  Sparkles,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar } from "@/components/Avatar";
 import { DecisionCelebration } from "@/components/DecisionCelebration";
+import { ManagePeople } from "@/components/ManagePeople";
 import { MissionsBoard } from "@/components/MissionsBoard";
 import { SuggestionDeck } from "@/components/SuggestionDeck";
 import { Button } from "@/components/ui/button";
@@ -59,13 +70,30 @@ export default function Room() {
   const [busy, setBusy] = useState(false);
   const [celebration, setCelebration] = useState<Suggestion | null>(null);
   const [closedAt, setClosedAt] = useState<string | null>(null);
+  const [requiresApproval, setRequiresApproval] = useState(false);
+  const [pendingMembers, setPendingMembers] = useState<Member[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const meId = room?.me?.id;
   const isAdmin = room?.me?.role === "admin";
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const hydrate = useCallback((data: RoomState) => {
+    setRoom(data);
+    setMembers(data.members);
+    setMessages(data.messages);
+    setCurrentSet(data.current_set);
+    setMissions(data.missions);
+    setStatus(data.status);
+    setDecidedId(data.decided_suggestion_id);
+    setGenerationsLeft(data.generations_left);
+    setClosedAt(data.closed_at);
+    setRequiresApproval(data.requires_approval);
+    setPendingMembers(data.pending_members);
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -80,15 +108,7 @@ export default function Room() {
           navigate(`/j/${data.invite_code}`, { replace: true });
           return;
         }
-        setRoom(data);
-        setMembers(data.members);
-        setMessages(data.messages);
-        setCurrentSet(data.current_set);
-        setMissions(data.missions);
-        setStatus(data.status);
-        setDecidedId(data.decided_suggestion_id);
-        setGenerationsLeft(data.generations_left);
-        setClosedAt(data.closed_at);
+        hydrate(data);
       })
       .catch((err) => {
         if (!active) return;
@@ -101,7 +121,7 @@ export default function Room() {
     return () => {
       active = false;
     };
-  }, [id, navigate]);
+  }, [id, navigate, hydrate]);
 
   const addMessage = useCallback((msg: Message) => {
     setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
@@ -116,7 +136,34 @@ export default function Room() {
         case "member_joined": {
           const member = event.payload as Member;
           setMembers((prev) => (prev.some((m) => m.id === member.id) ? prev : [...prev, member]));
+          setPendingMembers((prev) => prev.filter((m) => m.id !== member.id));
           toast(`${member.display_name} joined`);
+          break;
+        }
+        case "member_pending": {
+          const member = event.payload as Member;
+          setPendingMembers((prev) =>
+            prev.some((m) => m.id === member.id) ? prev : [...prev, member],
+          );
+          toast(`${member.display_name} wants to join`);
+          break;
+        }
+        case "member_removed": {
+          const { member_id } = event.payload as { member_id: string };
+          if (member_id === meId) {
+            toast("You were removed from this huddle");
+            navigate("/", { replace: true });
+            break;
+          }
+          setMembers((prev) => prev.filter((m) => m.id !== member_id));
+          setPendingMembers((prev) => prev.filter((m) => m.id !== member_id));
+          break;
+        }
+        case "member_approved": {
+          const member = event.payload as Member;
+          if (member.id === meId && id) {
+            api.getRoom(id).then(hydrate).catch(() => undefined);
+          }
           break;
         }
         case "generation_started": {
@@ -170,7 +217,7 @@ export default function Room() {
         }
       }
     },
-    [addMessage, navigate],
+    [addMessage, navigate, meId, id, hydrate],
   );
 
   useRoomSocket(room ? id : undefined, handleEvent);
@@ -197,6 +244,21 @@ export default function Room() {
     }, 3000);
     return () => clearInterval(timer);
   }, [id, room]);
+
+  // Robustness: if we're waiting for approval, poll until the host lets us in (or denies us).
+  useEffect(() => {
+    if (!id || !room || room.me?.status !== "pending") return;
+    const timer = setInterval(async () => {
+      try {
+        const data = await api.getRoom(id);
+        if (data.me?.status === "active") hydrate(data);
+        else if (!data.me) navigate("/", { replace: true });
+      } catch {
+        // ignore — next tick retries
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [id, room, hydrate, navigate]);
 
   async function send(content: string) {
     const text = content.trim();
@@ -305,6 +367,49 @@ export default function Room() {
     }
   }
 
+  async function handleToggleApproval(value: boolean) {
+    if (!id) return;
+    try {
+      const data = await api.setApproval(id, value);
+      setRequiresApproval(data.requires_approval);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't update the setting.");
+    }
+  }
+
+  async function handleRotate() {
+    if (!id) return;
+    try {
+      const data = await api.rotateInvite(id);
+      setRoom((prev) => (prev ? { ...prev, invite_code: data.invite_code } : prev));
+      toast.success("Invite link reset");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't reset the link.");
+    }
+  }
+
+  async function handleApprove(memberId: string) {
+    if (!id) return;
+    try {
+      const data = await api.approveMember(id, memberId);
+      setMembers(data.members);
+      setPendingMembers(data.pending_members);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't approve them.");
+    }
+  }
+
+  async function handleRemovePerson(memberId: string) {
+    if (!id) return;
+    try {
+      const data = await api.removeMember(id, memberId);
+      setMembers(data.members);
+      setPendingMembers(data.pending_members);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't remove them.");
+    }
+  }
+
   function shareInvite() {
     if (!room) return;
     const link = `${window.location.origin}/j/${room.invite_code}`;
@@ -350,6 +455,28 @@ export default function Room() {
         <h1 className="mt-5 font-display text-2xl font-bold text-ink">Designing your room…</h1>
         <p className="mt-2 max-w-xs text-muted-foreground">
           Setting up the questions and the game plan for{" "}
+          <span className="text-ink">"{room.topic}"</span>.
+        </p>
+      </div>
+    );
+  }
+
+  if (room.me?.status === "pending") {
+    return (
+      <div className="mx-auto flex h-dvh max-w-lg flex-col items-center justify-center bg-paper px-8 text-center sm:border-x sm:border-border">
+        <div className="flex items-center justify-center gap-1.5">
+          {[0, 1, 2, 3].map((i) => (
+            <motion.span
+              key={i}
+              className="size-2.5 rounded-full bg-marigold"
+              animate={{ opacity: [0.3, 1, 0.3], y: [0, -4, 0] }}
+              transition={{ duration: 1.1, repeat: Infinity, delay: i * 0.15 }}
+            />
+          ))}
+        </div>
+        <h1 className="mt-5 font-display text-2xl font-bold text-ink">Waiting to be let in…</h1>
+        <p className="mt-2 max-w-xs text-muted-foreground">
+          The host needs to approve you before you can join{" "}
           <span className="text-ink">"{room.topic}"</span>.
         </p>
       </div>
@@ -402,7 +529,21 @@ export default function Room() {
                 {menuOpen && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-                    <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg">
+                    <div className="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg">
+                      <button
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setManageOpen(true);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink hover:bg-accent"
+                      >
+                        <Users className="size-4 text-plum" /> Manage people
+                        {pendingMembers.length > 0 && (
+                          <span className="ml-auto rounded-full bg-marigold px-1.5 text-xs font-medium text-ink">
+                            {pendingMembers.length}
+                          </span>
+                        )}
+                      </button>
                       {!closed && (
                         <button
                           onClick={handleClose}
@@ -638,6 +779,20 @@ export default function Room() {
             </div>
           </div>
         </div>
+      )}
+
+      {manageOpen && (
+        <ManagePeople
+          requiresApproval={requiresApproval}
+          members={members}
+          pendingMembers={pendingMembers}
+          meId={meId}
+          onToggleApproval={handleToggleApproval}
+          onRotate={handleRotate}
+          onApprove={handleApprove}
+          onRemove={handleRemovePerson}
+          onClose={() => setManageOpen(false)}
+        />
       )}
     </div>
   );

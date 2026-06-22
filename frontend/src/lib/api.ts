@@ -93,6 +93,17 @@ export const api = {
     request<Mission[]>(`/api/rooms/${id}/assign-random`, { method: "POST" }),
   closeRoom: (id: string) => request<RoomState>(`/api/rooms/${id}/close`, { method: "POST" }),
   deleteRoom: (id: string) => request<void>(`/api/rooms/${id}`, { method: "DELETE" }),
+  removeMember: (roomId: string, memberId: string) =>
+    request<RoomState>(`/api/rooms/${roomId}/members/${memberId}/remove`, { method: "POST" }),
+  approveMember: (roomId: string, memberId: string) =>
+    request<RoomState>(`/api/rooms/${roomId}/members/${memberId}/approve`, { method: "POST" }),
+  rotateInvite: (roomId: string) =>
+    request<RoomState>(`/api/rooms/${roomId}/rotate-invite`, { method: "POST" }),
+  setApproval: (roomId: string, requiresApproval: boolean) =>
+    request<RoomState>(`/api/rooms/${roomId}/approval`, {
+      method: "POST",
+      body: JSON.stringify({ requires_approval: requiresApproval }),
+    }),
 };
 
 export { BASE_URL };

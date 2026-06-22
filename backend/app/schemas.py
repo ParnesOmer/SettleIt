@@ -34,6 +34,7 @@ class MemberOut(BaseModel):
     id: uuid.UUID
     display_name: str
     role: str
+    status: str = "active"
     created_at: datetime
 
 
@@ -92,6 +93,8 @@ class RoomState(BaseModel):
     decided_suggestion_id: uuid.UUID | None = None
     missions: list[MissionOut] = []
     closed_at: datetime | None = None
+    requires_approval: bool = False
+    pending_members: list[MemberOut] = []
     me: MemberOut | None = None
     # Populated only on create/join so the client can store it and send it back as a header
     # (cross-site auth where third-party cookies are blocked).
@@ -120,6 +123,10 @@ class CreateCustomRoomIn(BaseModel):
 
 class JoinRoomIn(BaseModel):
     display_name: str = Field(min_length=1, max_length=60)
+
+
+class ApprovalIn(BaseModel):
+    requires_approval: bool
 
 
 class CreateMessageIn(BaseModel):

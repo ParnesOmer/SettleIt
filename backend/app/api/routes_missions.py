@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_session
-from ..models import Member, Mission, MissionStatus, Room
+from ..models import Member, MemberStatus, Mission, MissionStatus, Room
 from ..realtime import broadcaster, make_event
 from ..schemas import MissionOut
 from ..security import get_session_token
@@ -30,7 +30,7 @@ async def _mission_member(
         member = await session.scalar(
             select(Member).where(Member.room_id == mission.room_id, Member.session_token == token)
         )
-    if member is None:
+    if member is None or member.status != MemberStatus.active:
         raise HTTPException(status_code=403, detail="Join the huddle to take a mission.")
     room = await session.get(Room, mission.room_id)
     if room is not None and room.closed_at is not None:

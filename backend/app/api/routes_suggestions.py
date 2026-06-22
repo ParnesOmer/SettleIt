@@ -10,7 +10,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_session
-from ..models import Member, Room, Suggestion, SuggestionSet, Vote
+from ..models import Member, MemberStatus, Room, Suggestion, SuggestionSet, Vote
 from ..realtime import broadcaster, make_event
 from ..schemas import VoteResult
 from ..security import get_session_token
@@ -38,7 +38,7 @@ async def cast_vote(
         me = await session.scalar(
             select(Member).where(Member.room_id == room.id, Member.session_token == token)
         )
-    if me is None:
+    if me is None or me.status != MemberStatus.active:
         raise HTTPException(status_code=403, detail="Join the huddle to vote.")
     if room.closed_at is not None:
         raise HTTPException(status_code=409, detail="This huddle is closed.")
