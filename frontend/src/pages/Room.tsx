@@ -535,6 +535,8 @@ export default function Room() {
   }
 
   const chips = [...room.template.seed_chips, ...extraChips];
+  // Once a chip is answered it drops out of the row, so only unanswered questions remain.
+  const unansweredChips = chips.filter((c) => !answers[c.id]);
   const openChip = chips.find((c) => c.id === activeChip);
   const postDecision = status === "decided" || status === "executing";
   const generating = currentSet?.status === "pending";
@@ -620,26 +622,19 @@ export default function Room() {
           </div>
         </div>
 
-        {!postDecision && (chips.length > 0 || isAdmin) && (
+        {!postDecision && (unansweredChips.length > 0 || isAdmin) && (
           <div className="mt-3">
             <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-              {chips.map((chip) => {
-                const answer = answers[chip.id];
-                return (
-                  <button
-                    key={chip.id}
-                    type="button"
-                    onClick={() => setActiveChip((cur) => (cur === chip.id ? null : chip.id))}
-                    className={cn(
-                      "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors",
-                      answer ? "border-plum bg-plum text-white" : "border-plum/40 text-plum hover:bg-plum/5",
-                    )}
-                  >
-                    {answer && <Check className="size-3.5" />}
-                    {answer ? `${chip.label} ${answer}` : chip.label}
-                  </button>
-                );
-              })}
+              {unansweredChips.map((chip) => (
+                <button
+                  key={chip.id}
+                  type="button"
+                  onClick={() => setActiveChip((cur) => (cur === chip.id ? null : chip.id))}
+                  className="flex shrink-0 items-center gap-1.5 rounded-full border border-plum/40 px-3 py-1.5 text-sm text-plum transition-colors hover:bg-plum/5"
+                >
+                  {chip.label}
+                </button>
+              ))}
               {isAdmin && (
                 <button
                   type="button"
