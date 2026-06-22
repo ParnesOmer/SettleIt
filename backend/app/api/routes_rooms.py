@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+import secrets
 import uuid
 from datetime import datetime, timezone
 
@@ -29,6 +30,8 @@ from ..models import (
 from ..models import Member as MemberModel
 from ..realtime import broadcaster, make_event
 from ..schemas import (
+    AddChipIn,
+    AddMissionIn,
     ApprovalIn,
     CreateCustomRoomIn,
     CreateMessageIn,
@@ -183,6 +186,7 @@ async def _build_room_state(
         closed_at=room.closed_at,
         requires_approval=room.requires_approval,
         pending_members=[MemberOut.model_validate(m) for m in pending],
+        extra_chips=room.extra_chips or [],
         me=MemberOut.model_validate(me) if me is not None else None,
     )
 
@@ -630,3 +634,91 @@ async def set_approval(
     room.requires_approval = body.requires_approval
     await session.commit()
     return await _build_room_state(session, room, me)
+
+
+@router.post("/{room_id}/chips", response_model=RoomState)
+async def add_chip(
+    room_id: uuid.UUID,
+    body: AddChipIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> RoomState:
+    room = await _get_room_or_404(session, room_id)
+    me = await _resolve_member(session, room.id, get_session_token(request))
+    if not _is_admin(me):
+        raise HTTPException(status_code=403, detail="Only the host can add questions.")
+    _ensure_open(room)
+
+    chips = list(room.extra_chips or [])
+    if len(chips) >= 8:
+        raise HTTPException(status_code=409, detail="You've added the maximum number of questions.")
+    options = [o.strip() for o in body.options if o.strip()][:6]
+    chips.append({"id": f"x_{secrets.token_hex(4)}", "label": body.label.strip(), "options": options})
+    room.extra_chips = chips
+    await session.commit()
+    await broadcaster.broadcast(str(room.id), make_event("chips_updated", {"extra_chips": chips}))
+    return await _build_room_state(session, room, me)
+
+
+@router.delete("/{room_id}/chips/{chip_id}", response_model=RoomState)
+async def remove_chip(
+    room_id: uuid.UUID,
+    chip_id: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> RoomState:
+    room = await _get_room_or_404(session, room_id)
+    me = await _resolve_member(session, room.id, get_session_token(request))
+    if not _is_admin(me):
+        raise HTTPException(status_code=403, detail="Only the host can remove questions.")
+    chips = [c for c in (room.extra_chips or []) if c.get("id") != chip_id]
+    room.extra_chips = chips
+    await session.commit()
+    await broadcaster.broadcast(str(room.id), make_event("chips_updated", {"extra_chips": chips}))
+    return await _build_room_state(session, room, me)
+
+
+@router.post("/{room_id}/missions", response_model=RoomState)
+async def add_mission(
+    room_id: uuid.UUID,
+    body: AddMissionIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> RoomState:
+    room = await _get_room_or_404(session, room_id)
+    me = await _resolve_member(session, room.id, get_session_token(request))
+    if not _is_admin(me):
+        raise HTTPException(status_code=403, detail="Only the host can add missions.")
+    _ensure_open(room)
+    if _status_str(room.status) not in ("decided", "executing"):
+        raise HTTPException(status_code=409, detail="Lock a decision before adding missions.")
+
+    session.add(Mission(room_id=room.id, title=body.title.strip()[:200], description=body.description.strip()))
+    await session.commit()
+    payload = await missions_out(session, room.id)
+    await broadcaster.broadcast(
+        str(room.id),
+        make_event(
+            "missions_ready",
+            {"status": _status_str(room.status), "missions": [m.model_dump(mode="json") for m in payload]},
+        ),
+    )
+    return await _build_room_state(session, room, me)
+
+
+@router.post("/{room_id}/missions/generate", status_code=202)
+async def suggest_missions(
+    room_id: uuid.UUID,
+    request: Request,
+    background: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    room = await _get_room_or_404(session, room_id)
+    me = await _resolve_member(session, room.id, get_session_token(request))
+    if not _is_admin(me):
+        raise HTTPException(status_code=403, detail="Only the host can generate missions.")
+    _ensure_open(room)
+    if _status_str(room.status) not in ("decided", "executing"):
+        raise HTTPException(status_code=409, detail="Lock a decision first.")
+    background.add_task(run_mission_proposal, room.id)
+    return {"status": "accepted"}

@@ -6,6 +6,7 @@ import {
   Check,
   Loader2,
   MoreVertical,
+  Plus,
   Send,
   Share2,
   Sparkles,
@@ -14,6 +15,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { AddChipDialog } from "@/components/AddChipDialog";
+import { AddMissionDialog } from "@/components/AddMissionDialog";
 import { Avatar } from "@/components/Avatar";
 import { DecisionCelebration } from "@/components/DecisionCelebration";
 import { ManagePeople } from "@/components/ManagePeople";
@@ -72,8 +75,11 @@ export default function Room() {
   const [closedAt, setClosedAt] = useState<string | null>(null);
   const [requiresApproval, setRequiresApproval] = useState(false);
   const [pendingMembers, setPendingMembers] = useState<Member[]>([]);
+  const [extraChips, setExtraChips] = useState<SeedChip[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
+  const [addChipOpen, setAddChipOpen] = useState(false);
+  const [addMissionOpen, setAddMissionOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -93,6 +99,7 @@ export default function Room() {
     setClosedAt(data.closed_at);
     setRequiresApproval(data.requires_approval);
     setPendingMembers(data.pending_members);
+    setExtraChips(data.extra_chips);
   }, []);
 
   useEffect(() => {
@@ -164,6 +171,11 @@ export default function Room() {
           if (member.id === meId && id) {
             api.getRoom(id).then(hydrate).catch(() => undefined);
           }
+          break;
+        }
+        case "chips_updated": {
+          const p = event.payload as { extra_chips: SeedChip[] };
+          setExtraChips(p.extra_chips);
           break;
         }
         case "generation_started": {
@@ -410,6 +422,45 @@ export default function Room() {
     }
   }
 
+  async function handleAddChip(label: string, options: string[]) {
+    if (!id) return;
+    try {
+      setExtraChips((await api.addChip(id, label, options)).extra_chips);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't add the question.");
+    }
+  }
+
+  async function handleRemoveChip(chipId: string) {
+    if (!id) return;
+    try {
+      setExtraChips((await api.removeChip(id, chipId)).extra_chips);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't remove the question.");
+    }
+  }
+
+  async function handleAddMission(title: string, description: string) {
+    if (!id) return;
+    try {
+      setMissions((await api.addMission(id, title, description)).missions);
+      setAddMissionOpen(false);
+      toast.success("Mission added");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't add the mission.");
+    }
+  }
+
+  async function handleSuggestMissions() {
+    if (!id) return;
+    try {
+      await api.suggestMissions(id);
+      toast("Finding more missions…");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't generate missions.");
+    }
+  }
+
   function shareInvite() {
     if (!room) return;
     const link = `${window.location.origin}/j/${room.invite_code}`;
@@ -483,7 +534,7 @@ export default function Room() {
     );
   }
 
-  const chips = room.template.seed_chips;
+  const chips = [...room.template.seed_chips, ...extraChips];
   const openChip = chips.find((c) => c.id === activeChip);
   const postDecision = status === "decided" || status === "executing";
   const generating = currentSet?.status === "pending";
@@ -569,7 +620,7 @@ export default function Room() {
           </div>
         </div>
 
-        {chips.length > 0 && !postDecision && (
+        {!postDecision && (chips.length > 0 || isAdmin) && (
           <div className="mt-3">
             <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
               {chips.map((chip) => {
@@ -589,6 +640,15 @@ export default function Room() {
                   </button>
                 );
               })}
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setAddChipOpen(true)}
+                  className="flex shrink-0 items-center gap-1 rounded-full border border-dashed border-plum/40 px-3 py-1.5 text-sm text-plum hover:bg-plum/5"
+                >
+                  <Plus className="size-3.5" /> Add
+                </button>
+              )}
             </div>
             <AnimatePresence>
               {openChip?.options && (
@@ -638,10 +698,13 @@ export default function Room() {
           <MissionsBoard
             missions={missions}
             meId={meId}
+            isAdmin={isAdmin}
             readOnly={closed}
             onClaim={handleClaim}
             onComplete={handleComplete}
             onAssignRandom={handleAssignRandom}
+            onAddMission={() => setAddMissionOpen(true)}
+            onSuggestMore={handleSuggestMissions}
           />
         )}
 
@@ -793,6 +856,19 @@ export default function Room() {
           onRemove={handleRemovePerson}
           onClose={() => setManageOpen(false)}
         />
+      )}
+
+      {addChipOpen && (
+        <AddChipDialog
+          extraChips={extraChips}
+          onAdd={handleAddChip}
+          onRemove={handleRemoveChip}
+          onClose={() => setAddChipOpen(false)}
+        />
+      )}
+
+      {addMissionOpen && (
+        <AddMissionDialog onAdd={handleAddMission} onClose={() => setAddMissionOpen(false)} />
       )}
     </div>
   );

@@ -29,6 +29,7 @@ EventType = Literal[
     "member_removed",
     "member_pending",
     "member_approved",
+    "chips_updated",
 ]
 
 

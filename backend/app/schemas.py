@@ -95,6 +95,7 @@ class RoomState(BaseModel):
     closed_at: datetime | None = None
     requires_approval: bool = False
     pending_members: list[MemberOut] = []
+    extra_chips: list[SeedChip] = []
     me: MemberOut | None = None
     # Populated only on create/join so the client can store it and send it back as a header
     # (cross-site auth where third-party cookies are blocked).
@@ -127,6 +128,16 @@ class JoinRoomIn(BaseModel):
 
 class ApprovalIn(BaseModel):
     requires_approval: bool
+
+
+class AddChipIn(BaseModel):
+    label: str = Field(min_length=1, max_length=120)
+    options: list[str] = []
+
+
+class AddMissionIn(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=1000)
 
 
 class CreateMessageIn(BaseModel):

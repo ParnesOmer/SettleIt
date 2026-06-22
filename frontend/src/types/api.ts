@@ -101,6 +101,7 @@ export interface RoomState {
   closed_at: string | null;
   requires_approval: boolean;
   pending_members: Member[];
+  extra_chips: SeedChip[];
   me: Member | null;
   session_token?: string | null;
 }
@@ -135,7 +136,8 @@ export type RoomEventType =
   | "room_deleted"
   | "member_pending"
   | "member_removed"
-  | "member_approved";
+  | "member_approved"
+  | "chips_updated";
 
 export interface RoomEvent<T = unknown> {
   type: RoomEventType;

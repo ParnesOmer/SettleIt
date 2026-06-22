@@ -103,6 +103,9 @@ class Room(Base):
     requires_approval: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    extra_chips: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     status: Mapped[RoomStatus] = mapped_column(
         Enum(RoomStatus, native_enum=False, length=20, name="room_status"),
         nullable=False,

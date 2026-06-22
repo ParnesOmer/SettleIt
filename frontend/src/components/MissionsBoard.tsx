@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Check, Dices, ExternalLink, Hand, RotateCcw } from "lucide-react";
+import { Check, Dices, ExternalLink, Hand, Plus, RotateCcw, Sparkles } from "lucide-react";
 
 import { Avatar } from "@/components/Avatar";
 import { Button } from "@/components/ui/button";
@@ -9,19 +9,25 @@ import type { Mission } from "@/types/api";
 interface BoardProps {
   missions: Mission[];
   meId?: string;
+  isAdmin?: boolean;
   readOnly?: boolean;
   onClaim: (id: string) => void;
   onComplete: (id: string) => void;
   onAssignRandom: () => void;
+  onAddMission: () => void;
+  onSuggestMore: () => void;
 }
 
 export function MissionsBoard({
   missions,
   meId,
+  isAdmin = false,
   readOnly = false,
   onClaim,
   onComplete,
   onAssignRandom,
+  onAddMission,
+  onSuggestMore,
 }: BoardProps) {
   if (missions.length === 0) return <LiningUp />;
 
@@ -56,6 +62,19 @@ export function MissionsBoard({
           <Dices className="size-4" />
           Assign leftovers randomly
         </Button>
+      )}
+
+      {isAdmin && !readOnly && (
+        <div className="mt-2 flex gap-2">
+          <Button variant="ghost" size="sm" className="flex-1" onClick={onAddMission}>
+            <Plus className="size-4" />
+            Add mission
+          </Button>
+          <Button variant="ghost" size="sm" className="flex-1" onClick={onSuggestMore}>
+            <Sparkles className="size-4" />
+            Suggest more
+          </Button>
+        </div>
       )}
     </section>
   );

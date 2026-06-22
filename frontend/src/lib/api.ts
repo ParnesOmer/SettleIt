@@ -104,6 +104,20 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ requires_approval: requiresApproval }),
     }),
+  addChip: (roomId: string, label: string, options: string[]) =>
+    request<RoomState>(`/api/rooms/${roomId}/chips`, {
+      method: "POST",
+      body: JSON.stringify({ label, options }),
+    }),
+  removeChip: (roomId: string, chipId: string) =>
+    request<RoomState>(`/api/rooms/${roomId}/chips/${chipId}`, { method: "DELETE" }),
+  addMission: (roomId: string, title: string, description: string) =>
+    request<RoomState>(`/api/rooms/${roomId}/missions`, {
+      method: "POST",
+      body: JSON.stringify({ title, description }),
+    }),
+  suggestMissions: (roomId: string) =>
+    request<{ status: string }>(`/api/rooms/${roomId}/missions/generate`, { method: "POST" }),
 };
 
 export { BASE_URL };
