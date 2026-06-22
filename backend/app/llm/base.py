@@ -51,6 +51,7 @@ class LLMProvider(Protocol):
         card_shape: dict,
         count: int,
         generation_number: int,
+        language: str = "en",
     ) -> list[Card]:
         """Read the room and return structured suggestion cards."""
         ...
@@ -62,16 +63,22 @@ class LLMProvider(Protocol):
         topic: str,
         mission_strategy: str,
         count: int,
+        language: str = "en",
     ) -> list[MissionSpec]:
         """Turn the locked decision into concrete missions, each with an optional search query."""
         ...
 
-    async def generate_template(self, *, topic: str) -> TemplateSpec:
+    async def generate_template(self, *, topic: str, language: str = "en") -> TemplateSpec:
         """Design a whole decision room for an arbitrary topic (custom-topic pipeline)."""
         ...
 
 
 # --- shared helpers used by the concrete providers ---
+
+
+def respond_in(language: str) -> str:
+    """An instruction line telling the model which language to write its output in."""
+    return "Respond entirely in Hebrew." if language == "he" else ""
 
 
 def format_transcript(transcript: list[TranscriptLine]) -> str:
@@ -86,7 +93,7 @@ def metadata_keys(card_shape: dict) -> list[str]:
 
 
 def build_user_prompt(
-    transcript: list[TranscriptLine], refinement: str | None, count: int
+    transcript: list[TranscriptLine], refinement: str | None, count: int, language: str = "en"
 ) -> str:
     parts = [f"The group's chat so far:\n{format_transcript(transcript)}"]
     if refinement:
@@ -96,6 +103,9 @@ def build_user_prompt(
         "concrete title and a warm, one-line rationale grounded in what the group actually said. "
         "Don't repeat suggestions or invent constraints the group didn't mention."
     )
+    instruction = respond_in(language)
+    if instruction:
+        parts.append(instruction)
     return "\n".join(parts)
 
 
@@ -123,7 +133,7 @@ def coerce_cards(raw: object, keys: list[str]) -> list[Card]:
 
 
 def build_missions_prompt(
-    decision_title: str, topic: str, mission_strategy: str, count: int
+    decision_title: str, topic: str, mission_strategy: str, count: int, language: str = "en"
 ) -> str:
     parts = [f"The group was deciding: {topic}.", f"They locked in: {decision_title}."]
     if mission_strategy:
@@ -134,6 +144,10 @@ def build_missions_prompt(
         "would find genuinely useful links to get started — or an empty string if web links "
         "wouldn't help that mission."
     )
+    instruction = respond_in(language)
+    if instruction:
+        # The search_query stays in the topic's natural language for good results.
+        parts.append(f"{instruction} Keep each 'search_query' in the language most likely to find results.")
     return "\n".join(parts)
 
 
@@ -157,18 +171,24 @@ def coerce_missions(raw: object) -> list[MissionSpec]:
     return missions
 
 
-def build_template_prompt(topic: str) -> str:
-    return (
+def build_template_prompt(topic: str, language: str = "en") -> str:
+    base = (
         f'Design a group decision room for this topic: "{topic}".\n'
         "Produce:\n"
         "- system_prompt: instructions for an agent to propose distinct, specific, real options for "
         "this exact topic, each with a warm one-line rationale grounded in what the group says.\n"
-        "- seed_chips: 3 to 5 quick constraint questions; each has a short id, a label (the "
-        "question), and 2 to 5 options.\n"
-        "- metadata_fields: 1 to 3 attributes each option card should show (key + short label).\n"
+        "- seed_chips: 3 to 5 quick constraint questions; each has a short id (keep ids in english "
+        "lowercase), a label (the question), and 2 to 5 options.\n"
+        "- metadata_fields: 1 to 3 attributes each option card should show (english key + short label).\n"
         "- mission_strategy: one or two sentences on how to break the chosen option into concrete "
         "next steps."
     )
+    if language == "he":
+        base += (
+            "\nWrite the system_prompt, every chip label, every option, and each metadata label and "
+            "mission_strategy in Hebrew. Keep the chip ids and metadata keys in english."
+        )
+    return base
 
 
 def _slug(text: str, fallback: str) -> str:

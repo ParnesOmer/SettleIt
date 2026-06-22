@@ -26,6 +26,7 @@ import { SuggestionDeck } from "@/components/SuggestionDeck";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, ApiError } from "@/lib/api";
+import { localizeChip } from "@/lib/builtinChips";
 import { useT } from "@/lib/i18n";
 import { setActiveToken, tokenForRoom } from "@/lib/session";
 import { useRoomSocket } from "@/lib/useRoomSocket";
@@ -58,7 +59,7 @@ function applyVotes(set: SuggestionSet, result: VoteResult): SuggestionSet {
 export default function Room() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { t } = useT();
+  const { t, lang } = useT();
 
   const [room, setRoom] = useState<RoomState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -286,7 +287,7 @@ export default function Room() {
   async function chooseChip(chip: SeedChip, option: string) {
     setAnswers((prev) => ({ ...prev, [chip.id]: option }));
     setActiveChip(null);
-    await send(`${chip.label} ${option}`);
+    await send(`${localizeChip(chip, lang).label} ${option}`);
   }
 
   async function handleGenerate() {
@@ -537,6 +538,7 @@ export default function Room() {
   // Once a chip is answered it drops out of the row, so only unanswered questions remain.
   const unansweredChips = chips.filter((c) => !answers[c.id]);
   const openChip = chips.find((c) => c.id === activeChip);
+  const openChipOptions = openChip ? localizeChip(openChip, lang).options : [];
   const postDecision = status === "decided" || status === "executing";
   const generating = currentSet?.status === "pending";
   const winner = currentSet?.suggestions.find((s) => s.id === decidedId) ?? null;
@@ -633,7 +635,7 @@ export default function Room() {
                   onClick={() => setActiveChip((cur) => (cur === chip.id ? null : chip.id))}
                   className="flex shrink-0 items-center gap-1.5 rounded-full border border-plum/40 px-3 py-1.5 text-sm text-plum transition-colors hover:bg-plum/5"
                 >
-                  {chip.label}
+                  {localizeChip(chip, lang).label}
                 </button>
               ))}
               {isAdmin && (
@@ -647,7 +649,7 @@ export default function Room() {
               )}
             </div>
             <AnimatePresence>
-              {openChip?.options && (
+              {openChip && openChipOptions.length > 0 && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
@@ -655,7 +657,7 @@ export default function Room() {
                   className="overflow-hidden"
                 >
                   <div className="flex flex-wrap gap-2 pt-2">
-                    {openChip.options.map((opt) => (
+                    {openChipOptions.map((opt) => (
                       <button
                         key={opt}
                         type="button"

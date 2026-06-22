@@ -96,6 +96,7 @@ class RoomState(BaseModel):
     requires_approval: bool = False
     pending_members: list[MemberOut] = []
     extra_chips: list[SeedChip] = []
+    content_language: str = "en"
     me: MemberOut | None = None
     # Populated only on create/join so the client can store it and send it back as a header
     # (cross-site auth where third-party cookies are blocked).
@@ -115,11 +116,13 @@ class CreateRoomIn(BaseModel):
     template_id: uuid.UUID
     topic: str = Field(min_length=1, max_length=200)
     display_name: str = Field(min_length=1, max_length=60)
+    language: str = "en"
 
 
 class CreateCustomRoomIn(BaseModel):
     topic: str = Field(min_length=1, max_length=200)
     display_name: str = Field(min_length=1, max_length=60)
+    language: str = "en"
 
 
 class JoinRoomIn(BaseModel):

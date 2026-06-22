@@ -35,6 +35,7 @@ class StubProvider:
         card_shape: dict,
         count: int,
         generation_number: int,
+        language: str = "en",
     ) -> list[Card]:
         await asyncio.sleep(1.6)
         start = ((generation_number - 1) * count) % len(_CATALOG)
@@ -56,6 +57,7 @@ class StubProvider:
         topic: str,
         mission_strategy: str,
         count: int,
+        language: str = "en",
     ) -> list[MissionSpec]:
         await asyncio.sleep(1.0)
         missions: list[MissionSpec] = [
@@ -82,7 +84,7 @@ class StubProvider:
         ]
         return missions[:count]
 
-    async def generate_template(self, *, topic: str) -> TemplateSpec:
+    async def generate_template(self, *, topic: str, language: str = "en") -> TemplateSpec:
         await asyncio.sleep(1.4)
         return {
             "system_prompt": (

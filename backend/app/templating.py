@@ -32,14 +32,14 @@ def _fallback_spec(topic: str) -> dict:
     }
 
 
-async def run_template_generation(template_id: uuid.UUID, topic: str) -> None:
+async def run_template_generation(template_id: uuid.UUID, topic: str, language: str = "en") -> None:
     async with SessionLocal() as session:
         template = await session.get(Template, template_id)
         if template is None:
             return
 
         try:
-            spec = await get_provider().generate_template(topic=topic)
+            spec = await get_provider().generate_template(topic=topic, language=language)
             if not spec.get("system_prompt") or not spec.get("seed_chips"):
                 raise ValueError("incomplete template")
         except Exception:

@@ -44,6 +44,7 @@ class GeminiProvider:
         card_shape: dict,
         count: int,
         generation_number: int,
+        language: str = "en",
     ) -> list[Card]:
         keys = metadata_keys(card_shape)
         item_props: dict = {"title": {"type": "STRING"}, "rationale": {"type": "STRING"}}
@@ -60,7 +61,7 @@ class GeminiProvider:
         body = {
             "system_instruction": {"parts": [{"text": system_prompt}]},
             "contents": [
-                {"role": "user", "parts": [{"text": build_user_prompt(transcript, refinement, count)}]}
+                {"role": "user", "parts": [{"text": build_user_prompt(transcript, refinement, count, language)}]}
             ],
             "generationConfig": {
                 "responseMimeType": "application/json",
@@ -96,6 +97,7 @@ class GeminiProvider:
         topic: str,
         mission_strategy: str,
         count: int,
+        language: str = "en",
     ) -> list[MissionSpec]:
         schema = {
             "type": "ARRAY",
@@ -114,7 +116,7 @@ class GeminiProvider:
                 {
                     "role": "user",
                     "parts": [
-                        {"text": build_missions_prompt(decision_title, topic, mission_strategy, count)}
+                        {"text": build_missions_prompt(decision_title, topic, mission_strategy, count, language)}
                     ],
                 }
             ],
@@ -143,7 +145,7 @@ class GeminiProvider:
             raise GenerationError("gemini returned no usable missions")
         return missions[:count]
 
-    async def generate_template(self, *, topic: str) -> TemplateSpec:
+    async def generate_template(self, *, topic: str, language: str = "en") -> TemplateSpec:
         schema = {
             "type": "OBJECT",
             "properties": {
@@ -173,7 +175,7 @@ class GeminiProvider:
             "required": ["system_prompt", "seed_chips"],
         }
         body = {
-            "contents": [{"role": "user", "parts": [{"text": build_template_prompt(topic)}]}],
+            "contents": [{"role": "user", "parts": [{"text": build_template_prompt(topic, language)}]}],
             "generationConfig": {
                 "responseMimeType": "application/json",
                 "responseSchema": schema,

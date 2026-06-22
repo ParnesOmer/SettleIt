@@ -17,7 +17,7 @@ const CUSTOM = "__custom__";
 
 export default function CreateRoom() {
   const navigate = useNavigate();
-  const { t } = useT();
+  const { t, lang } = useT();
   const [templates, setTemplates] = useState<Template[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -51,11 +51,12 @@ export default function CreateRoom() {
     setCreating(true);
     try {
       const room = isCustom
-        ? await api.createCustomRoom(topic.trim(), name.trim())
+        ? await api.createCustomRoom(topic.trim(), name.trim(), lang)
         : await api.createRoom({
             template_id: selectedId,
             topic: topic.trim(),
             display_name: name.trim(),
+            language: lang,
           });
       if (room.session_token) saveToken(room.id, room.session_token);
       toast.success(isCustom ? t("toast.designingRoom") : t("toast.roomCreated"));

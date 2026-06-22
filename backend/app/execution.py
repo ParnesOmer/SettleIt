@@ -55,6 +55,7 @@ async def run_mission_proposal(room_id: uuid.UUID) -> None:
                 topic=room.topic,
                 mission_strategy=execution_spec.get("mission_strategy", ""),
                 count=_MISSION_COUNT,
+                language=room.content_language,
             )
             if not specs:
                 raise ValueError("no missions")

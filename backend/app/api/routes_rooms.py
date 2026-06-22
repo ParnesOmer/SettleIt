@@ -187,6 +187,7 @@ async def _build_room_state(
         requires_approval=room.requires_approval,
         pending_members=[MemberOut.model_validate(m) for m in pending],
         extra_chips=room.extra_chips or [],
+        content_language=room.content_language,
         me=MemberOut.model_validate(me) if me is not None else None,
     )
 
@@ -203,7 +204,12 @@ async def create_room(
         raise HTTPException(status_code=404, detail="That template doesn't exist.")
 
     invite_code = await _unique_invite_code(session)
-    room = Room(template_id=template.id, topic=body.topic.strip(), invite_code=invite_code)
+    room = Room(
+        template_id=template.id,
+        topic=body.topic.strip(),
+        invite_code=invite_code,
+        content_language="he" if body.language == "he" else "en",
+    )
     session.add(room)
     await session.flush()
 
@@ -234,6 +240,7 @@ async def create_custom_room(
     session: AsyncSession = Depends(get_session),
 ) -> RoomState:
     topic = body.topic.strip()
+    language = "he" if body.language == "he" else "en"
     # Placeholder template; a background job designs it (chips/prompt/card shape/execution spec).
     template = Template(
         topic_name=topic[:120],
@@ -247,7 +254,9 @@ async def create_custom_room(
     await session.flush()
 
     invite_code = await _unique_invite_code(session)
-    room = Room(template_id=template.id, topic=topic, invite_code=invite_code)
+    room = Room(
+        template_id=template.id, topic=topic, invite_code=invite_code, content_language=language
+    )
     session.add(room)
     await session.flush()
 
@@ -264,7 +273,7 @@ async def create_custom_room(
     await session.commit()
 
     set_session_cookie(response, token)
-    background.add_task(run_template_generation, template.id, topic)
+    background.add_task(run_template_generation, template.id, topic, language)
     state = await _build_room_state(session, room, admin)
     state.session_token = token
     return state

@@ -59,6 +59,7 @@ async def run_generation(room_id: uuid.UUID, set_id: uuid.UUID, refinement: str 
                 card_shape=template.card_shape,
                 count=_CARD_COUNT,
                 generation_number=sset.generation_number,
+                language=room.content_language,
             )
             if not cards:
                 raise ValueError("provider returned no cards")

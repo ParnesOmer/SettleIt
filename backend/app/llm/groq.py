@@ -41,6 +41,7 @@ class GroqProvider:
         card_shape: dict,
         count: int,
         generation_number: int,
+        language: str = "en",
     ) -> list[Card]:
         keys = metadata_keys(card_shape)
         meta_hint = f' Each suggestion\'s "metadata" object should include keys: {", ".join(keys)}.' if keys else ""
@@ -49,7 +50,7 @@ class GroqProvider:
             '{"suggestions": [{"title": "...", "rationale": "...", "metadata": {}}]}.'
             f"{meta_hint}"
         )
-        user = build_user_prompt(transcript, refinement, count) + " Respond with JSON only."
+        user = build_user_prompt(transcript, refinement, count, language) + " Respond with JSON only."
 
         body = {
             "model": self._model,
@@ -86,13 +87,14 @@ class GroqProvider:
         topic: str,
         mission_strategy: str,
         count: int,
+        language: str = "en",
     ) -> list[MissionSpec]:
         system = (
             "You break a group's locked decision into concrete next-step missions. Return a JSON "
             'object of the form {"missions": [{"title": "...", "description": "...", '
             '"search_query": "..."}]}.'
         )
-        user = build_missions_prompt(decision_title, topic, mission_strategy, count) + " JSON only."
+        user = build_missions_prompt(decision_title, topic, mission_strategy, count, language) + " JSON only."
         body = {
             "model": self._model,
             "messages": [
@@ -119,13 +121,13 @@ class GroqProvider:
             raise GenerationError("groq returned no usable missions")
         return missions[:count]
 
-    async def generate_template(self, *, topic: str) -> TemplateSpec:
+    async def generate_template(self, *, topic: str, language: str = "en") -> TemplateSpec:
         system = (
             "You design decision rooms. Return a JSON object with keys: system_prompt (string), "
             "seed_chips (array of {id, label, options[]}), metadata_fields (array of {key, label}), "
             "mission_strategy (string)."
         )
-        user = build_template_prompt(topic) + " JSON only."
+        user = build_template_prompt(topic, language) + " JSON only."
         body = {
             "model": self._model,
             "messages": [

@@ -119,6 +119,7 @@ export interface CreateRoomBody {
   template_id: string;
   topic: string;
   display_name: string;
+  language: string;
 }
 
 // WebSocket events the server pushes to a room.

@@ -106,6 +106,9 @@ class Room(Base):
     extra_chips: Mapped[list] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
     )
+    content_language: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="en", server_default="en"
+    )
     status: Mapped[RoomStatus] = mapped_column(
         Enum(RoomStatus, native_enum=False, length=20, name="room_status"),
         nullable=False,
