@@ -96,6 +96,7 @@ export interface RoomState {
   current_set: SuggestionSet | null;
   decided_suggestion_id: string | null;
   missions: Mission[];
+  closed_at: string | null;
   me: Member | null;
   session_token?: string | null;
 }
@@ -125,7 +126,9 @@ export type RoomEventType =
   | "decision_locked"
   | "missions_ready"
   | "mission_updated"
-  | "template_ready";
+  | "template_ready"
+  | "room_closed"
+  | "room_deleted";
 
 export interface RoomEvent<T = unknown> {
   type: RoomEventType;

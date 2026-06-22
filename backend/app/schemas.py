@@ -91,6 +91,7 @@ class RoomState(BaseModel):
     current_set: SuggestionSetOut | None = None
     decided_suggestion_id: uuid.UUID | None = None
     missions: list[MissionOut] = []
+    closed_at: datetime | None = None
     me: MemberOut | None = None
     # Populated only on create/join so the client can store it and send it back as a header
     # (cross-site auth where third-party cookies are blocked).

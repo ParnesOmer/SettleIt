@@ -13,6 +13,7 @@ interface DeckProps {
   isAdmin: boolean;
   decided: boolean;
   decidedId: string | null;
+  readOnly?: boolean;
   onVote: (id: string) => void;
   onLock: (id: string) => void;
 }
@@ -24,6 +25,7 @@ export function SuggestionDeck({
   isAdmin,
   decided,
   decidedId,
+  readOnly = false,
   onVote,
   onLock,
 }: DeckProps) {
@@ -63,6 +65,7 @@ export function SuggestionDeck({
               isWinner={decided && decidedId === s.id}
               isLeader={!decided && maxVotes > 0 && s.vote_count === maxVotes}
               dimmed={decided && decidedId !== s.id}
+              readOnly={readOnly}
               onVote={onVote}
               onLock={onLock}
             />
@@ -82,6 +85,7 @@ function SuggestionCard({
   isWinner,
   isLeader,
   dimmed,
+  readOnly,
   onVote,
   onLock,
 }: {
@@ -93,6 +97,7 @@ function SuggestionCard({
   isWinner: boolean;
   isLeader: boolean;
   dimmed: boolean;
+  readOnly: boolean;
   onVote: (id: string) => void;
   onLock: (id: string) => void;
 }) {
@@ -165,7 +170,7 @@ function SuggestionCard({
           </span>
         </div>
 
-        {!decided && (
+        {!decided && !readOnly && (
           <div className="flex items-center gap-1.5">
             {isAdmin && (
               <Button variant="ghost" size="sm" className="text-plum" onClick={() => onLock(s.id)}>

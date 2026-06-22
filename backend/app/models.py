@@ -108,6 +108,7 @@ class Room(Base):
     generation_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = _created_at()
 
     template: Mapped[Template] = relationship(back_populates="rooms")

@@ -9,12 +9,20 @@ import type { Mission } from "@/types/api";
 interface BoardProps {
   missions: Mission[];
   meId?: string;
+  readOnly?: boolean;
   onClaim: (id: string) => void;
   onComplete: (id: string) => void;
   onAssignRandom: () => void;
 }
 
-export function MissionsBoard({ missions, meId, onClaim, onComplete, onAssignRandom }: BoardProps) {
+export function MissionsBoard({
+  missions,
+  meId,
+  readOnly = false,
+  onClaim,
+  onComplete,
+  onAssignRandom,
+}: BoardProps) {
   if (missions.length === 0) return <LiningUp />;
 
   const done = missions.filter((m) => m.status === "done").length;
@@ -32,11 +40,18 @@ export function MissionsBoard({ missions, meId, onClaim, onComplete, onAssignRan
 
       <div className="space-y-2.5">
         {missions.map((m) => (
-          <MissionCard key={m.id} m={m} meId={meId} onClaim={onClaim} onComplete={onComplete} />
+          <MissionCard
+            key={m.id}
+            m={m}
+            meId={meId}
+            readOnly={readOnly}
+            onClaim={onClaim}
+            onComplete={onComplete}
+          />
         ))}
       </div>
 
-      {hasOpen && (
+      {hasOpen && !readOnly && (
         <Button variant="outline" className="mt-3 w-full" onClick={onAssignRandom}>
           <Dices className="size-4" />
           Assign leftovers randomly
@@ -49,11 +64,13 @@ export function MissionsBoard({ missions, meId, onClaim, onComplete, onAssignRan
 function MissionCard({
   m,
   meId,
+  readOnly,
   onClaim,
   onComplete,
 }: {
   m: Mission;
   meId?: string;
+  readOnly: boolean;
   onClaim: (id: string) => void;
   onComplete: (id: string) => void;
 }) {
@@ -113,7 +130,8 @@ function MissionCard({
         </div>
       )}
 
-      <div className="mt-3 flex items-center justify-end gap-2">
+      {!readOnly && (
+        <div className="mt-3 flex items-center justify-end gap-2">
         {!done && !m.assigned_member_id && (
           <button
             onClick={() => onClaim(m.id)}
@@ -149,7 +167,8 @@ function MissionCard({
             Mark done
           </button>
         )}
-      </div>
+        </div>
+      )}
     </motion.div>
   );
 }

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import random
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_session
@@ -64,6 +65,11 @@ def _status_str(value: object) -> str:
 
 def _is_admin(member: MemberModel | None) -> bool:
     return member is not None and _status_str(member.role) == "admin"
+
+
+def _ensure_open(room: Room) -> None:
+    if room.closed_at is not None:
+        raise HTTPException(status_code=409, detail="This huddle is closed.")
 
 
 async def _get_room_or_404(session: AsyncSession, room_id: uuid.UUID) -> Room:
@@ -152,6 +158,7 @@ async def _build_room_state(
         current_set=current_set,
         decided_suggestion_id=room.decided_suggestion_id,
         missions=missions,
+        closed_at=room.closed_at,
         me=MemberOut.model_validate(me) if me is not None else None,
     )
 
@@ -313,6 +320,7 @@ async def post_message(
     me = await _resolve_member(session, room.id, get_session_token(request))
     if me is None:
         raise HTTPException(status_code=403, detail="Join the huddle to chat.")
+    _ensure_open(room)
 
     message = Message(room_id=room.id, member_id=me.id, content=body.content.strip())
     session.add(message)
@@ -345,6 +353,7 @@ async def generate(
     me = await _resolve_member(session, room.id, get_session_token(request))
     if not _is_admin(me):
         raise HTTPException(status_code=403, detail="Only the host can generate suggestions.")
+    _ensure_open(room)
     if _status_str(room.status) != "deciding":
         raise HTTPException(status_code=409, detail="This huddle has already locked a decision.")
     if room.generation_count >= MAX_GENERATIONS:
@@ -386,6 +395,7 @@ async def decide(
     me = await _resolve_member(session, room.id, get_session_token(request))
     if not _is_admin(me):
         raise HTTPException(status_code=403, detail="Only the host can lock the decision.")
+    _ensure_open(room)
     if _status_str(room.status) != "deciding":
         raise HTTPException(status_code=409, detail="A decision is already locked.")
 
@@ -430,6 +440,7 @@ async def assign_random(
     me = await _resolve_member(session, room.id, get_session_token(request))
     if me is None:
         raise HTTPException(status_code=403, detail="Join the huddle to assign missions.")
+    _ensure_open(room)
 
     members = await _members(session, room.id)
     open_missions = list(
@@ -456,3 +467,55 @@ async def assign_random(
         ),
     )
     return payload
+
+
+@router.post("/{room_id}/close", response_model=RoomState)
+async def close_room(
+    room_id: uuid.UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> RoomState:
+    room = await _get_room_or_404(session, room_id)
+    me = await _resolve_member(session, room.id, get_session_token(request))
+    if not _is_admin(me):
+        raise HTTPException(status_code=403, detail="Only the host can close the huddle.")
+
+    if room.closed_at is None:
+        room.closed_at = datetime.now(timezone.utc)
+        await session.commit()
+        await broadcaster.broadcast(
+            str(room.id),
+            make_event("room_closed", {"closed_at": room.closed_at.isoformat()}),
+        )
+    return await _build_room_state(session, room, me)
+
+
+@router.delete("/{room_id}", status_code=204)
+async def delete_room(
+    room_id: uuid.UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    room = await _get_room_or_404(session, room_id)
+    me = await _resolve_member(session, room.id, get_session_token(request))
+    if not _is_admin(me):
+        raise HTTPException(status_code=403, detail="Only the host can delete the huddle.")
+
+    template_id = room.template_id
+    # Tell connected clients before the row (and their sockets) disappear.
+    await broadcaster.broadcast(str(room.id), make_event("room_deleted", {"room_id": str(room.id)}))
+
+    # Break the circular FK, then delete — child rows cascade at the DB level.
+    room.decided_suggestion_id = None
+    await session.flush()
+    await session.execute(delete(Room).where(Room.id == room.id))
+
+    # Sweep an orphaned custom template (built-ins are shared and kept).
+    template = await session.get(Template, template_id)
+    if template is not None and template.is_custom:
+        still_used = await session.scalar(select(Room.id).where(Room.template_id == template_id))
+        if still_used is None:
+            await session.delete(template)
+
+    await session.commit()
+    return Response(status_code=204)

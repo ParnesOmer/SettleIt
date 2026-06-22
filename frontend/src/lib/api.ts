@@ -46,6 +46,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(response.status, detail);
   }
 
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
@@ -90,6 +91,8 @@ export const api = {
     request<Mission>(`/api/missions/${missionId}/complete`, { method: "POST" }),
   assignRandom: (id: string) =>
     request<Mission[]>(`/api/rooms/${id}/assign-random`, { method: "POST" }),
+  closeRoom: (id: string) => request<RoomState>(`/api/rooms/${id}/close`, { method: "POST" }),
+  deleteRoom: (id: string) => request<void>(`/api/rooms/${id}`, { method: "DELETE" }),
 };
 
 export { BASE_URL };

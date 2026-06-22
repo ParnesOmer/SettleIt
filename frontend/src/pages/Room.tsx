@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Loader2, Send, Share2, Sparkles } from "lucide-react";
+import { Archive, Check, Loader2, MoreVertical, Send, Share2, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar } from "@/components/Avatar";
@@ -58,6 +58,10 @@ export default function Room() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [celebration, setCelebration] = useState<Suggestion | null>(null);
+  const [closedAt, setClosedAt] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const meId = room?.me?.id;
   const isAdmin = room?.me?.role === "admin";
@@ -84,6 +88,7 @@ export default function Room() {
         setStatus(data.status);
         setDecidedId(data.decided_suggestion_id);
         setGenerationsLeft(data.generations_left);
+        setClosedAt(data.closed_at);
       })
       .catch((err) => {
         if (!active) return;
@@ -153,9 +158,19 @@ export default function Room() {
           setRoom((prev) => (prev ? { ...prev, template } : prev));
           break;
         }
+        case "room_closed": {
+          const p = event.payload as { closed_at: string };
+          setClosedAt(p.closed_at);
+          break;
+        }
+        case "room_deleted": {
+          toast("This huddle was deleted by the host");
+          navigate("/", { replace: true });
+          break;
+        }
       }
     },
-    [addMessage],
+    [addMessage, navigate],
   );
 
   useRoomSocket(room ? id : undefined, handleEvent);
@@ -265,6 +280,31 @@ export default function Room() {
     }
   }
 
+  async function handleClose() {
+    if (!id) return;
+    setMenuOpen(false);
+    try {
+      const updated = await api.closeRoom(id);
+      setClosedAt(updated.closed_at);
+      toast.success("Huddle closed");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't close the huddle.");
+    }
+  }
+
+  async function handleDelete() {
+    if (!id) return;
+    setDeleting(true);
+    try {
+      await api.deleteRoom(id);
+      toast.success("Huddle deleted");
+      navigate("/", { replace: true });
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't delete the huddle.");
+      setDeleting(false);
+    }
+  }
+
   function shareInvite() {
     if (!room) return;
     const link = `${window.location.origin}/j/${room.invite_code}`;
@@ -321,7 +361,8 @@ export default function Room() {
   const postDecision = status === "decided" || status === "executing";
   const generating = currentSet?.status === "pending";
   const winner = currentSet?.suggestions.find((s) => s.id === decidedId) ?? null;
-  const canGenerate = isAdmin && status === "deciding" && !generating && generationsLeft > 0;
+  const closed = Boolean(closedAt);
+  const canGenerate = isAdmin && status === "deciding" && !generating && generationsLeft > 0 && !closed;
   const hasSet = Boolean(currentSet);
 
   return (
@@ -348,6 +389,42 @@ export default function Room() {
             <Button variant="ghost" size="icon" onClick={shareInvite} aria-label="Copy invite link">
               <Share2 />
             </Button>
+            {isAdmin && (
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setMenuOpen((o) => !o)}
+                  aria-label="Room options"
+                >
+                  <MoreVertical />
+                </Button>
+                {menuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                    <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg">
+                      {!closed && (
+                        <button
+                          onClick={handleClose}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink hover:bg-accent"
+                        >
+                          <Archive className="size-4 text-plum" /> Close huddle
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setConfirmingDelete(true);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-coral hover:bg-accent"
+                      >
+                        <Trash2 className="size-4" /> Delete huddle
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -400,6 +477,13 @@ export default function Room() {
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
+        {closed && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3.5 py-2.5">
+            <Archive className="size-4 shrink-0 text-plum" />
+            <p className="text-sm text-ink">This huddle is closed — it's read-only now.</p>
+          </div>
+        )}
+
         {postDecision && winner && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-marigold bg-marigold/10 px-3.5 py-2.5">
             <Check className="size-4 shrink-0 text-[#9a6212]" />
@@ -413,6 +497,7 @@ export default function Room() {
           <MissionsBoard
             missions={missions}
             meId={meId}
+            readOnly={closed}
             onClaim={handleClaim}
             onComplete={handleComplete}
             onAssignRandom={handleAssignRandom}
@@ -447,6 +532,7 @@ export default function Room() {
             isAdmin={isAdmin}
             decided={false}
             decidedId={decidedId}
+            readOnly={closed}
             onVote={handleVote}
             onLock={handleLock}
           />
@@ -455,6 +541,7 @@ export default function Room() {
         <div ref={bottomRef} />
       </div>
 
+      {!closed && (
       <footer className="shrink-0 border-t border-border bg-paper">
         {isAdmin && status === "deciding" && (
           <div className="space-y-2 px-4 pt-3">
@@ -507,6 +594,7 @@ export default function Room() {
           </Button>
         </form>
       </footer>
+      )}
 
       <AnimatePresence>
         {celebration && (
@@ -517,6 +605,40 @@ export default function Room() {
           />
         )}
       </AnimatePresence>
+
+      {confirmingDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-6"
+          onClick={() => !deleting && setConfirmingDelete(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-border bg-card p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="font-display text-xl font-bold text-ink">Delete this huddle?</h2>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              This permanently removes the chat, decision, and missions for everyone. It can't be
+              undone.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+                {deleting ? (
+                  <>
+                    <Loader2 className="animate-spin" /> Deleting…
+                  </>
+                ) : (
+                  <>
+                    <Trash2 /> Delete
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

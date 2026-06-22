@@ -32,6 +32,9 @@ async def _mission_member(
         )
     if member is None:
         raise HTTPException(status_code=403, detail="Join the huddle to take a mission.")
+    room = await session.get(Room, mission.room_id)
+    if room is not None and room.closed_at is not None:
+        raise HTTPException(status_code=409, detail="This huddle is closed.")
     return mission, member
 
 

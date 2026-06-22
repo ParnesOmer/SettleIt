@@ -40,6 +40,8 @@ async def cast_vote(
         )
     if me is None:
         raise HTTPException(status_code=403, detail="Join the huddle to vote.")
+    if room.closed_at is not None:
+        raise HTTPException(status_code=409, detail="This huddle is closed.")
 
     status = room.status.value if hasattr(room.status, "value") else room.status
     if status != "deciding":

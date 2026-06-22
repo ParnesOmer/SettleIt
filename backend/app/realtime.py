@@ -24,6 +24,8 @@ EventType = Literal[
     "missions_ready",
     "mission_updated",
     "template_ready",
+    "room_closed",
+    "room_deleted",
 ]
 
 
