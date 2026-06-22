@@ -3,6 +3,7 @@ import { Check, Lock, Trophy } from "lucide-react";
 
 import { Avatar } from "@/components/Avatar";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { Member, Suggestion, SuggestionSet } from "@/types/api";
 
@@ -29,6 +30,7 @@ export function SuggestionDeck({
   onVote,
   onLock,
 }: DeckProps) {
+  const { t } = useT();
   if (!set) return null;
   const nameById = new Map(members.map((m) => [m.id, m.display_name]));
   const maxVotes = Math.max(0, ...set.suggestions.map((s) => s.vote_count));
@@ -36,18 +38,20 @@ export function SuggestionDeck({
   return (
     <section className="mt-5">
       <div className="mb-2.5 flex items-center gap-2">
-        <span className="font-mono text-xs uppercase tracking-wide text-plum">Suggestions</span>
+        <span className="font-mono text-xs uppercase tracking-wide text-plum">{t("sug.title")}</span>
         <span className="h-px flex-1 bg-border" />
-        <span className="font-mono text-[11px] text-muted-foreground">gen {set.generation_number}</span>
+        <span className="font-mono text-[11px] text-muted-foreground">
+          {t("sug.gen", { n: set.generation_number })}
+        </span>
       </div>
 
       {set.status === "pending" && <GeneratingState />}
 
       {set.status === "failed" && (
         <div className="rounded-lg border border-border bg-card p-4 text-sm">
-          <p className="text-ink">The agent couldn't put suggestions together.</p>
+          <p className="text-ink">{t("sug.failed")}</p>
           <p className="mt-1 text-muted-foreground">
-            {isAdmin ? "Try generating again." : "Ask the host to try again."}
+            {isAdmin ? t("sug.failedAdmin") : t("sug.failedMember")}
           </p>
         </div>
       )}
@@ -101,6 +105,7 @@ function SuggestionCard({
   onVote: (id: string) => void;
   onLock: (id: string) => void;
 }) {
+  const { t } = useT();
   const backed = meId ? s.backer_ids.includes(meId) : false;
   const meta = Object.values(s.metadata || {}).filter(Boolean);
 
@@ -124,12 +129,12 @@ function SuggestionCard({
         {isWinner && (
           <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-marigold px-2 py-0.5 text-xs font-medium text-ink">
             <Trophy className="size-3.5" />
-            Decided
+            {t("sug.decided")}
           </span>
         )}
         {isLeader && (
           <span className="shrink-0 rounded-full bg-marigold/15 px-2 py-0.5 text-xs font-medium text-[#9a6212]">
-            Leading
+            {t("sug.leading")}
           </span>
         )}
       </div>
@@ -158,7 +163,7 @@ function SuggestionCard({
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0, opacity: 0 }}
                   transition={{ type: "spring", stiffness: 500, damping: 24 }}
-                  className={i > 0 ? "-ml-2" : ""}
+                  className={i > 0 ? "-ms-2" : ""}
                 >
                   <Avatar name={nameById.get(id) ?? "?"} size={24} />
                 </motion.div>
@@ -166,7 +171,7 @@ function SuggestionCard({
             </AnimatePresence>
           </div>
           <span className="font-mono text-xs text-muted-foreground">
-            {s.vote_count} {s.vote_count === 1 ? "vote" : "votes"}
+            {t(s.vote_count === 1 ? "sug.votes_one" : "sug.votes_other", { n: s.vote_count })}
           </span>
         </div>
 
@@ -175,7 +180,7 @@ function SuggestionCard({
             {isAdmin && (
               <Button variant="ghost" size="sm" className="text-plum" onClick={() => onLock(s.id)}>
                 <Lock className="size-3.5" />
-                Lock
+                {t("sug.lock")}
               </Button>
             )}
             <button
@@ -188,7 +193,7 @@ function SuggestionCard({
               )}
             >
               {backed && <Check className="size-3.5" />}
-              {backed ? "Backed" : "Back this"}
+              {backed ? t("sug.backed") : t("sug.back")}
             </button>
           </div>
         )}
@@ -198,6 +203,7 @@ function SuggestionCard({
 }
 
 function GeneratingState() {
+  const { t } = useT();
   return (
     <div className="rounded-2xl border border-border bg-card p-6 text-center">
       <div className="flex items-center justify-center gap-1.5">
@@ -210,8 +216,8 @@ function GeneratingState() {
           />
         ))}
       </div>
-      <p className="mt-3 font-display text-lg font-semibold text-ink">Reading the room…</p>
-      <p className="mt-1 text-sm text-muted-foreground">The agent is weighing what everyone said.</p>
+      <p className="mt-3 font-display text-lg font-semibold text-ink">{t("sug.reading")}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{t("sug.readingBody")}</p>
     </div>
   );
 }

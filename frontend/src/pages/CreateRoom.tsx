@@ -6,7 +6,9 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LanguageToggle } from "@/components/LanguageToggle";
 import { api, ApiError } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { saveToken } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import type { Template } from "@/types/api";
@@ -15,6 +17,7 @@ const CUSTOM = "__custom__";
 
 export default function CreateRoom() {
   const navigate = useNavigate();
+  const { t } = useT();
   const [templates, setTemplates] = useState<Template[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -55,20 +58,21 @@ export default function CreateRoom() {
             display_name: name.trim(),
           });
       if (room.session_token) saveToken(room.id, room.session_token);
-      toast.success(isCustom ? "Designing your room…" : "Room created");
+      toast.success(isCustom ? t("toast.designingRoom") : t("toast.roomCreated"));
       navigate(`/room/${room.id}`);
     } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : "Couldn't create the room. Try again.");
+      toast.error(error instanceof ApiError ? error.message : t("toast.createFailed"));
       setCreating(false);
     }
   }
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-6 py-12">
-      <header className="mb-8">
+      <header className="mb-8 flex items-center justify-between">
         <p className="font-display text-2xl font-extrabold tracking-tight text-ink">
           SettleIt<span className="text-marigold">.</span>
         </p>
+        <LanguageToggle />
       </header>
 
       <motion.div
@@ -76,23 +80,21 @@ export default function CreateRoom() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
       >
-        <h1 className="font-display text-3xl font-bold text-ink">Start a huddle</h1>
-        <p className="mt-2 text-muted-foreground">
-          Pick what you're deciding, share the link, and let everyone weigh in.
-        </p>
+        <h1 className="font-display text-3xl font-bold text-ink">{t("create.title")}</h1>
+        <p className="mt-2 text-muted-foreground">{t("create.subtitle")}</p>
 
         <div className="mt-8 space-y-6">
-          <Field label="Your name">
+          <Field label={t("create.yourName")}>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Rae"
+              placeholder={t("create.namePlaceholder")}
               maxLength={60}
               autoFocus
             />
           </Field>
 
-          <Field label="What are you deciding?">
+          <Field label={t("create.deciding")}>
             {loadFailed ? (
               <ErrorRow onRetry={() => window.location.reload()} />
             ) : templates === null ? (
@@ -103,7 +105,7 @@ export default function CreateRoom() {
                   <TopicCard
                     key={template.id}
                     title={template.topic_name}
-                    detail={`${template.seed_chips.length} quick questions to get going`}
+                    detail={t("create.questionsToGo", { n: template.seed_chips.length })}
                     selected={selectedId === template.id}
                     onSelect={() => {
                       setSelectedId(template.id);
@@ -122,11 +124,11 @@ export default function CreateRoom() {
             )}
           </Field>
 
-          <Field label={isCustom ? "What are you deciding?" : "Name this huddle"}>
+          <Field label={isCustom ? t("create.deciding") : t("create.nameHuddle")}>
             <Input
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
-              placeholder={isCustom ? "e.g. a weekend trip to Lisbon" : "e.g. Friday movie night"}
+              placeholder={isCustom ? t("create.customTopicPlaceholder") : t("create.topicPlaceholder")}
               maxLength={200}
             />
           </Field>
@@ -135,11 +137,11 @@ export default function CreateRoom() {
             {creating ? (
               <>
                 <Loader2 className="animate-spin" />
-                {isCustom ? "Designing…" : "Creating…"}
+                {isCustom ? t("create.designing") : t("create.creating")}
               </>
             ) : (
               <>
-                {isCustom ? "Design my room" : "Create room"}
+                {isCustom ? t("create.ctaCustom") : t("create.cta")}
                 {isCustom ? <Sparkles /> : <ArrowRight />}
               </>
             )}
@@ -175,7 +177,7 @@ function TopicCard({
       type="button"
       onClick={onSelect}
       className={cn(
-        "flex w-full items-center gap-3 rounded-lg border bg-card p-3.5 text-left transition-colors",
+        "flex w-full items-center gap-3 rounded-lg border bg-card p-3.5 text-start transition-colors",
         selected ? "border-marigold ring-1 ring-marigold" : "border-border hover:border-secondary/50",
       )}
     >
@@ -197,12 +199,13 @@ function TopicCard({
 }
 
 function CustomTopicCard({ selected, onSelect }: { selected: boolean; onSelect: () => void }) {
+  const { t } = useT();
   return (
     <button
       type="button"
       onClick={onSelect}
       className={cn(
-        "flex w-full items-center gap-3 rounded-lg border bg-card p-3.5 text-left transition-colors",
+        "flex w-full items-center gap-3 rounded-lg border bg-card p-3.5 text-start transition-colors",
         selected
           ? "border-marigold ring-1 ring-marigold"
           : "border-dashed border-border hover:border-secondary/50",
@@ -217,20 +220,21 @@ function CustomTopicCard({ selected, onSelect }: { selected: boolean; onSelect: 
         <Sparkles className="size-5" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block font-display text-lg font-semibold text-ink">Custom topic</span>
-        <span className="block text-sm text-muted-foreground">Describe anything — we'll design the room</span>
+        <span className="block font-display text-lg font-semibold text-ink">{t("create.custom")}</span>
+        <span className="block text-sm text-muted-foreground">{t("create.customDesc")}</span>
       </span>
     </button>
   );
 }
 
 function ErrorRow({ onRetry }: { onRetry: () => void }) {
+  const { t } = useT();
   return (
     <div className="rounded-lg border border-border bg-card p-4 text-sm">
-      <p className="text-ink">We couldn't load the topics.</p>
-      <p className="mt-1 text-muted-foreground">Check the backend is running, then try again.</p>
+      <p className="text-ink">{t("create.loadError")}</p>
+      <p className="mt-1 text-muted-foreground">{t("create.loadErrorHint")}</p>
       <Button variant="outline" size="sm" className="mt-3" onClick={onRetry}>
-        Try again
+        {t("create.tryAgain")}
       </Button>
     </div>
   );

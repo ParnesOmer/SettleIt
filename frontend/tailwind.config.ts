@@ -51,9 +51,10 @@ export default {
         },
       },
       fontFamily: {
-        display: ['"Bricolage Grotesque"', "system-ui", "sans-serif"],
-        sans: ['"Hanken Grotesk"', "system-ui", "sans-serif"],
-        mono: ['"Space Mono"', "ui-monospace", "monospace"],
+        // Latin glyphs come from the brand faces; Hebrew glyphs fall through to Rubik/Heebo.
+        display: ['"Bricolage Grotesque"', '"Rubik"', "system-ui", "sans-serif"],
+        sans: ['"Hanken Grotesk"', '"Heebo"', "system-ui", "sans-serif"],
+        mono: ['"Space Mono"', '"Heebo"', "ui-monospace", "monospace"],
       },
       borderRadius: {
         lg: "var(--radius)",

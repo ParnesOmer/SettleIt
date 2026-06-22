@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useT } from "@/lib/i18n";
 import type { SeedChip } from "@/types/api";
 
 export function AddChipDialog({
@@ -16,6 +17,7 @@ export function AddChipDialog({
   onRemove: (id: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const [label, setLabel] = useState("");
   const [optionsText, setOptionsText] = useState("");
 
@@ -41,40 +43,40 @@ export function AddChipDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-display text-xl font-bold text-ink">Add a question</h2>
+          <h2 className="font-display text-xl font-bold text-ink">{t("chip.title")}</h2>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
             <X />
           </Button>
         </div>
 
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-ink">Question</span>
+          <span className="mb-1.5 block text-sm font-medium text-ink">{t("chip.label")}</span>
           <Input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            placeholder="e.g. Which dates?"
+            placeholder={t("chip.labelPlaceholder")}
             maxLength={120}
             autoFocus
           />
         </label>
         <label className="mt-3 block">
           <span className="mb-1.5 block text-sm font-medium text-ink">
-            Options <span className="text-muted-foreground">(comma-separated, optional)</span>
+            {t("chip.options")} <span className="text-muted-foreground">{t("chip.optionsHint")}</span>
           </span>
           <Input
             value={optionsText}
             onChange={(e) => setOptionsText(e.target.value)}
-            placeholder="This weekend, Next week"
+            placeholder={t("chip.optionsPlaceholder")}
           />
         </label>
         <Button className="mt-4 w-full" disabled={!label.trim()} onClick={submit}>
-          Add question
+          {t("chip.add")}
         </Button>
 
         {extraChips.length > 0 && (
           <div className="mt-5">
             <p className="mb-2 font-mono text-xs uppercase tracking-wide text-plum">
-              Your added questions
+              {t("chip.yours")}
             </p>
             <ul className="space-y-1.5">
               {extraChips.map((c) => (

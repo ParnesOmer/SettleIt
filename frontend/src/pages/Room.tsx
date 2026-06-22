@@ -19,12 +19,14 @@ import { AddChipDialog } from "@/components/AddChipDialog";
 import { AddMissionDialog } from "@/components/AddMissionDialog";
 import { Avatar } from "@/components/Avatar";
 import { DecisionCelebration } from "@/components/DecisionCelebration";
+import { LanguageToggle } from "@/components/LanguageToggle";
 import { ManagePeople } from "@/components/ManagePeople";
 import { MissionsBoard } from "@/components/MissionsBoard";
 import { SuggestionDeck } from "@/components/SuggestionDeck";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, ApiError } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { setActiveToken, tokenForRoom } from "@/lib/session";
 import { useRoomSocket } from "@/lib/useRoomSocket";
 import { cn } from "@/lib/utils";
@@ -56,6 +58,7 @@ function applyVotes(set: SuggestionSet, result: VoteResult): SuggestionSet {
 export default function Room() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { t } = useT();
 
   const [room, setRoom] = useState<RoomState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -120,15 +123,13 @@ export default function Room() {
       .catch((err) => {
         if (!active) return;
         setError(
-          err instanceof ApiError && err.status === 404
-            ? "This huddle doesn't exist."
-            : "We couldn't load this huddle. Check your connection and try again.",
+          err instanceof ApiError && err.status === 404 ? t("err.roomGone") : t("err.roomLoad"),
         );
       });
     return () => {
       active = false;
     };
-  }, [id, navigate, hydrate]);
+  }, [id, navigate, hydrate, t]);
 
   const addMessage = useCallback((msg: Message) => {
     setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
@@ -144,7 +145,7 @@ export default function Room() {
           const member = event.payload as Member;
           setMembers((prev) => (prev.some((m) => m.id === member.id) ? prev : [...prev, member]));
           setPendingMembers((prev) => prev.filter((m) => m.id !== member.id));
-          toast(`${member.display_name} joined`);
+          toast(`${member.display_name} ${t("toast.joinedSuffix")}`);
           break;
         }
         case "member_pending": {
@@ -152,13 +153,13 @@ export default function Room() {
           setPendingMembers((prev) =>
             prev.some((m) => m.id === member.id) ? prev : [...prev, member],
           );
-          toast(`${member.display_name} wants to join`);
+          toast(`${member.display_name} ${t("toast.wantsToJoin")}`);
           break;
         }
         case "member_removed": {
           const { member_id } = event.payload as { member_id: string };
           if (member_id === meId) {
-            toast("You were removed from this huddle");
+            toast(t("toast.removed"));
             navigate("/", { replace: true });
             break;
           }
@@ -223,13 +224,13 @@ export default function Room() {
           break;
         }
         case "room_deleted": {
-          toast("This huddle was deleted by the host");
+          toast(t("toast.deletedByHost"));
           navigate("/", { replace: true });
           break;
         }
       }
     },
-    [addMessage, navigate, meId, id, hydrate],
+    [addMessage, navigate, meId, id, hydrate, t],
   );
 
   useRoomSocket(room ? id : undefined, handleEvent);
@@ -348,7 +349,7 @@ export default function Room() {
     if (!id) return;
     try {
       setMissions(await api.assignRandom(id));
-      toast.success("Leftovers assigned");
+      toast.success(t("toast.leftoversAssigned"));
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't assign missions.");
     }
@@ -360,7 +361,7 @@ export default function Room() {
     try {
       const updated = await api.closeRoom(id);
       setClosedAt(updated.closed_at);
-      toast.success("Huddle closed");
+      toast.success(t("toast.closed"));
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't close the huddle.");
     }
@@ -371,7 +372,7 @@ export default function Room() {
     setDeleting(true);
     try {
       await api.deleteRoom(id);
-      toast.success("Huddle deleted");
+      toast.success(t("toast.deleted"));
       navigate("/", { replace: true });
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't delete the huddle.");
@@ -394,7 +395,7 @@ export default function Room() {
     try {
       const data = await api.rotateInvite(id);
       setRoom((prev) => (prev ? { ...prev, invite_code: data.invite_code } : prev));
-      toast.success("Invite link reset");
+      toast.success(t("toast.linkReset"));
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't reset the link.");
     }
@@ -445,7 +446,7 @@ export default function Room() {
     try {
       setMissions((await api.addMission(id, title, description)).missions);
       setAddMissionOpen(false);
-      toast.success("Mission added");
+      toast.success(t("mis.added"));
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't add the mission.");
     }
@@ -455,7 +456,7 @@ export default function Room() {
     if (!id) return;
     try {
       await api.suggestMissions(id);
-      toast("Finding more missions…");
+      toast(t("mis.findingMore"));
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't generate missions.");
     }
@@ -466,17 +467,17 @@ export default function Room() {
     const link = `${window.location.origin}/j/${room.invite_code}`;
     navigator.clipboard
       .writeText(link)
-      .then(() => toast.success("Invite link copied"))
+      .then(() => toast.success(t("toast.linkCopied")))
       .catch(() => toast.error(`Couldn't copy — the link is ${link}`));
   }
 
   if (error) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center px-6 text-center">
-        <h1 className="font-display text-2xl font-bold text-ink">Hmm, that didn't work</h1>
+        <h1 className="font-display text-2xl font-bold text-ink">{t("err.badTitle")}</h1>
         <p className="mt-2 text-muted-foreground">{error}</p>
         <Button variant="outline" className="mt-6" onClick={() => navigate("/")}>
-          Start a new huddle
+          {t("join.startNew")}
         </Button>
       </main>
     );
@@ -503,10 +504,9 @@ export default function Room() {
             />
           ))}
         </div>
-        <h1 className="mt-5 font-display text-2xl font-bold text-ink">Designing your room…</h1>
+        <h1 className="mt-5 font-display text-2xl font-bold text-ink">{t("room.designingTitle")}</h1>
         <p className="mt-2 max-w-xs text-muted-foreground">
-          Setting up the questions and the game plan for{" "}
-          <span className="text-ink">"{room.topic}"</span>.
+          {t("room.designingBody", { topic: room.topic })}
         </p>
       </div>
     );
@@ -525,10 +525,9 @@ export default function Room() {
             />
           ))}
         </div>
-        <h1 className="mt-5 font-display text-2xl font-bold text-ink">Waiting to be let in…</h1>
+        <h1 className="mt-5 font-display text-2xl font-bold text-ink">{t("room.pendingTitle")}</h1>
         <p className="mt-2 max-w-xs text-muted-foreground">
-          The host needs to approve you before you can join{" "}
-          <span className="text-ink">"{room.topic}"</span>.
+          {t("room.pendingBody", { topic: room.topic })}
         </p>
       </div>
     );
@@ -552,20 +551,22 @@ export default function Room() {
           <div className="min-w-0">
             <h1 className="truncate font-display text-2xl font-bold text-ink">{room.topic}</h1>
             <p className="mt-0.5 font-mono text-xs text-plum">
-              {postDecision ? "decided" : "deciding"} · {members.length} here
+              {postDecision ? t("room.decided") : t("room.deciding")} ·{" "}
+              {t("room.here", { n: members.length })}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <div className="flex">
               {members.slice(0, 4).map((m, i) => (
-                <Avatar key={m.id} name={m.display_name} size={30} className={i > 0 ? "-ml-2" : ""} />
+                <Avatar key={m.id} name={m.display_name} size={30} className={i > 0 ? "-ms-2" : ""} />
               ))}
               {members.length > 4 && (
-                <span className="-ml-2 flex size-[30px] items-center justify-center rounded-full bg-muted text-xs font-medium text-plum ring-2 ring-background">
+                <span className="-ms-2 flex size-[30px] items-center justify-center rounded-full bg-muted text-xs font-medium text-plum ring-2 ring-background">
                   +{members.length - 4}
                 </span>
               )}
             </div>
+            <LanguageToggle iconOnly />
             <Button variant="ghost" size="icon" onClick={shareInvite} aria-label="Copy invite link">
               <Share2 />
             </Button>
@@ -588,9 +589,9 @@ export default function Room() {
                           setMenuOpen(false);
                           setManageOpen(true);
                         }}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink hover:bg-accent"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-ink hover:bg-accent"
                       >
-                        <Users className="size-4 text-plum" /> Manage people
+                        <Users className="size-4 text-plum" /> {t("menu.manage")}
                         {pendingMembers.length > 0 && (
                           <span className="ml-auto rounded-full bg-marigold px-1.5 text-xs font-medium text-ink">
                             {pendingMembers.length}
@@ -600,9 +601,9 @@ export default function Room() {
                       {!closed && (
                         <button
                           onClick={handleClose}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink hover:bg-accent"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-ink hover:bg-accent"
                         >
-                          <Archive className="size-4 text-plum" /> Close huddle
+                          <Archive className="size-4 text-plum" /> {t("menu.close")}
                         </button>
                       )}
                       <button
@@ -610,9 +611,9 @@ export default function Room() {
                           setMenuOpen(false);
                           setConfirmingDelete(true);
                         }}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-coral hover:bg-accent"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-coral hover:bg-accent"
                       >
-                        <Trash2 className="size-4" /> Delete huddle
+                        <Trash2 className="size-4" /> {t("menu.delete")}
                       </button>
                     </div>
                   </>
@@ -641,7 +642,7 @@ export default function Room() {
                   onClick={() => setAddChipOpen(true)}
                   className="flex shrink-0 items-center gap-1 rounded-full border border-dashed border-plum/40 px-3 py-1.5 text-sm text-plum hover:bg-plum/5"
                 >
-                  <Plus className="size-3.5" /> Add
+                  <Plus className="size-3.5" /> {t("room.add")}
                 </button>
               )}
             </div>
@@ -676,16 +677,14 @@ export default function Room() {
         {closed && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3.5 py-2.5">
             <Archive className="size-4 shrink-0 text-plum" />
-            <p className="text-sm text-ink">This huddle is closed — it's read-only now.</p>
+            <p className="text-sm text-ink">{t("room.closedBanner")}</p>
           </div>
         )}
 
         {postDecision && winner && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-marigold bg-marigold/10 px-3.5 py-2.5">
             <Check className="size-4 shrink-0 text-[#9a6212]" />
-            <p className="text-sm text-ink">
-              Decided: <span className="font-medium">{winner.title}</span>
-            </p>
+            <p className="text-sm text-ink">{t("room.decidedBanner", { title: winner.title })}</p>
           </div>
         )}
 
@@ -709,7 +708,7 @@ export default function Room() {
           <div className={postDecision ? "mt-7" : undefined}>
             {postDecision && (
               <div className="mb-2.5 flex items-center gap-2">
-                <span className="font-mono text-xs uppercase tracking-wide text-plum">Chat</span>
+                <span className="font-mono text-xs uppercase tracking-wide text-plum">{t("room.chat")}</span>
                 <span className="h-px flex-1 bg-border" />
               </div>
             )}
@@ -760,16 +759,14 @@ export default function Room() {
             >
               <span className="flex items-center gap-2">
                 {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-                {generating ? "Generating…" : hasSet ? "Regenerate" : "Generate suggestions"}
+                {generating ? t("room.generating") : hasSet ? t("room.regenerate") : t("room.generate")}
               </span>
               <span className="font-mono text-xs opacity-80">
-                {generationsLeft > 0 ? `${generationsLeft} of 3 left` : "no generations left"}
+                {generationsLeft > 0 ? t("room.left", { n: generationsLeft }) : t("room.noneLeft")}
               </span>
             </Button>
             {hasSet && !generating && (
-              <p className="pb-0.5 text-center text-xs text-muted-foreground">
-                Tap <span className="font-medium text-plum">Lock</span> on a card to settle it.
-              </p>
+              <p className="pb-0.5 text-center text-xs text-muted-foreground">{t("room.lockHint")}</p>
             )}
           </div>
         )}
@@ -785,7 +782,7 @@ export default function Room() {
           <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder={postDecision ? "Chat about the plan…" : "Message the huddle…"}
+            placeholder={postDecision ? t("room.composerDecided") : t("room.composer")}
             maxLength={2000}
           />
           <Button type="submit" size="icon" disabled={draft.trim().length === 0} aria-label="Send">
@@ -814,23 +811,20 @@ export default function Room() {
             className="w-full max-w-sm rounded-2xl border border-border bg-card p-5"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="font-display text-xl font-bold text-ink">Delete this huddle?</h2>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              This permanently removes the chat, decision, and missions for everyone. It can't be
-              undone.
-            </p>
+            <h2 className="font-display text-xl font-bold text-ink">{t("delete.title")}</h2>
+            <p className="mt-1.5 text-sm text-muted-foreground">{t("delete.body")}</p>
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
                 {deleting ? (
                   <>
-                    <Loader2 className="animate-spin" /> Deleting…
+                    <Loader2 className="animate-spin" /> {t("delete.deleting")}
                   </>
                 ) : (
                   <>
-                    <Trash2 /> Delete
+                    <Trash2 /> {t("common.delete")}
                   </>
                 )}
               </Button>
@@ -887,11 +881,11 @@ function MessageBubble({
     >
       {!mine && <div className="w-7 shrink-0">{showName && <Avatar name={message.author_name} size={28} />}</div>}
       <div className={cn("max-w-[78%]", mine && "flex flex-col items-end")}>
-        {showName && <span className="mb-0.5 ml-1 text-xs font-medium text-plum">{message.author_name}</span>}
+        {showName && <span className="mb-0.5 ms-1 text-xs font-medium text-plum">{message.author_name}</span>}
         <div
           className={cn(
             "rounded-2xl px-3.5 py-2 text-[15px] leading-snug",
-            mine ? "rounded-br-md bg-plum text-white" : "rounded-bl-md border border-border bg-card text-ink",
+            mine ? "rounded-ee-md bg-plum text-white" : "rounded-es-md border border-border bg-card text-ink",
           )}
         >
           {message.content}
@@ -902,15 +896,14 @@ function MessageBubble({
 }
 
 function EmptyChat() {
+  const { t } = useT();
   return (
     <div className="flex h-full flex-col items-center justify-center px-6 text-center">
       <div className="flex size-12 items-center justify-center rounded-full bg-muted text-plum">
         <Sparkles className="size-6" />
       </div>
-      <p className="mt-4 font-display text-lg font-semibold text-ink">No messages yet</p>
-      <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-        Be the first to suggest something — or tap a chip above to set a constraint.
-      </p>
+      <p className="mt-4 font-display text-lg font-semibold text-ink">{t("room.emptyTitle")}</p>
+      <p className="mt-1 max-w-xs text-sm text-muted-foreground">{t("room.emptyBody")}</p>
     </div>
   );
 }

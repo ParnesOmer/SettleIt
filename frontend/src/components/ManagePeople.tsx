@@ -2,6 +2,7 @@ import { Check, Link2, UserMinus, X } from "lucide-react";
 
 import { Avatar } from "@/components/Avatar";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n";
 import type { Member } from "@/types/api";
 
 interface ManagePeopleProps {
@@ -27,6 +28,7 @@ export function ManagePeople({
   onRemove,
   onClose,
 }: ManagePeopleProps) {
+  const { t } = useT();
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center"
@@ -37,7 +39,7 @@ export function ManagePeople({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-display text-xl font-bold text-ink">People &amp; access</h2>
+          <h2 className="font-display text-xl font-bold text-ink">{t("people.title")}</h2>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
             <X />
           </Button>
@@ -51,23 +53,25 @@ export function ManagePeople({
             className="mt-0.5 size-4 accent-marigold"
           />
           <span>
-            <span className="block text-sm font-medium text-ink">Require approval to join</span>
+            <span className="block text-sm font-medium text-ink">{t("people.requireApproval")}</span>
             <span className="block text-sm text-muted-foreground">
-              New people wait for you to let them in. Off by default.
+              {t("people.requireApprovalDesc")}
             </span>
           </span>
         </label>
 
         <Button variant="outline" className="mt-3 w-full justify-start" onClick={onRotate}>
           <Link2 className="size-4" />
-          Reset invite link
-          <span className="ml-auto font-mono text-xs text-muted-foreground">old link stops working</span>
+          {t("people.resetLink")}
+          <span className="ms-auto font-mono text-xs text-muted-foreground">
+            {t("people.resetLinkHint")}
+          </span>
         </Button>
 
         {pendingMembers.length > 0 && (
           <div className="mt-5">
             <p className="mb-2 font-mono text-xs uppercase tracking-wide text-plum">
-              Waiting to join
+              {t("people.waiting")}
             </p>
             <ul className="space-y-1.5">
               {pendingMembers.map((m) => (
@@ -76,10 +80,10 @@ export function ManagePeople({
                   <span className="flex-1 truncate text-sm text-ink">{m.display_name}</span>
                   <Button size="sm" onClick={() => onApprove(m.id)}>
                     <Check className="size-3.5" />
-                    Approve
+                    {t("people.approve")}
                   </Button>
                   <Button variant="ghost" size="sm" className="text-coral" onClick={() => onRemove(m.id)}>
-                    Deny
+                    {t("people.deny")}
                   </Button>
                 </li>
               ))}
@@ -89,7 +93,7 @@ export function ManagePeople({
 
         <div className="mt-5">
           <p className="mb-2 font-mono text-xs uppercase tracking-wide text-plum">
-            In the huddle ({members.length})
+            {t("people.inHuddle", { n: members.length })}
           </p>
           <ul className="space-y-1.5">
             {members.map((m) => (
@@ -97,8 +101,10 @@ export function ManagePeople({
                 <Avatar name={m.display_name} size={28} />
                 <span className="flex-1 truncate text-sm text-ink">
                   {m.display_name}
-                  {m.id === meId && <span className="text-muted-foreground"> · you</span>}
-                  {m.role === "admin" && <span className="text-muted-foreground"> · host</span>}
+                  {m.id === meId && <span className="text-muted-foreground"> · {t("people.you")}</span>}
+                  {m.role === "admin" && (
+                    <span className="text-muted-foreground"> · {t("people.host")}</span>
+                  )}
                 </span>
                 {m.id !== meId && (
                   <Button
@@ -108,7 +114,7 @@ export function ManagePeople({
                     onClick={() => onRemove(m.id)}
                   >
                     <UserMinus className="size-3.5" />
-                    Remove
+                    {t("people.remove")}
                   </Button>
                 )}
               </li>

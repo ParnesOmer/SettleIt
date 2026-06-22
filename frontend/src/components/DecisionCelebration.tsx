@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 
 import { Avatar } from "@/components/Avatar";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n";
 import type { Member, Suggestion } from "@/types/api";
 
 // The emotional peak: member tokens fly in from spread-out positions and settle into one tight
@@ -15,6 +16,7 @@ export function DecisionCelebration({
   members: Member[];
   onDone: () => void;
 }) {
+  const { t } = useT();
   const nameById = new Map(members.map((m) => [m.id, m.display_name]));
   const backers = suggestion.backer_ids.length ? suggestion.backer_ids : members.map((m) => m.id);
   const shown = backers.slice(0, 7);
@@ -32,7 +34,7 @@ export function DecisionCelebration({
         transition={{ delay: 0.1 }}
         className="font-mono text-xs uppercase tracking-[0.2em] text-plum"
       >
-        the huddle decided
+        {t("celebrate.eyebrow")}
       </motion.p>
 
       <motion.h2
@@ -51,7 +53,7 @@ export function DecisionCelebration({
             initial={{ x: (i - (shown.length - 1) / 2) * 44, opacity: 0, scale: 0.6 }}
             animate={{ x: 0, opacity: 1, scale: 1 }}
             transition={{ type: "spring", stiffness: 260, damping: 22, delay: 0.5 + i * 0.05 }}
-            className={i > 0 ? "-ml-3" : ""}
+            className={i > 0 ? "-ms-3" : ""}
           >
             <Avatar name={nameById.get(id) ?? "?"} size={42} />
           </motion.div>
@@ -64,7 +66,7 @@ export function DecisionCelebration({
         transition={{ type: "spring", stiffness: 200, damping: 14, delay: 1.05 }}
         className="mt-7 rounded-full bg-marigold px-4 py-1.5 text-sm font-semibold text-ink"
       >
-        Decided
+        {t("celebrate.badge")}
       </motion.div>
 
       <motion.div
@@ -73,7 +75,7 @@ export function DecisionCelebration({
         transition={{ delay: 1.4 }}
         className="mt-10"
       >
-        <Button onClick={onDone}>Back to the huddle</Button>
+        <Button onClick={onDone}>{t("celebrate.back")}</Button>
       </motion.div>
     </motion.div>
   );
