@@ -11,11 +11,14 @@ from .base import (
     Card,
     GenerationError,
     MissionSpec,
+    TemplateSpec,
     TranscriptLine,
     build_missions_prompt,
+    build_template_prompt,
     build_user_prompt,
     coerce_cards,
     coerce_missions,
+    coerce_template,
     metadata_keys,
 )
 
@@ -115,3 +118,36 @@ class GroqProvider:
         if not missions:
             raise GenerationError("groq returned no usable missions")
         return missions[:count]
+
+    async def generate_template(self, *, topic: str) -> TemplateSpec:
+        system = (
+            "You design decision rooms. Return a JSON object with keys: system_prompt (string), "
+            "seed_chips (array of {id, label, options[]}), metadata_fields (array of {key, label}), "
+            "mission_strategy (string)."
+        )
+        user = build_template_prompt(topic) + " JSON only."
+        body = {
+            "model": self._model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.8,
+        }
+        async with httpx.AsyncClient(timeout=40) as client:
+            resp = await client.post(
+                _URL, headers={"Authorization": f"Bearer {self._api_key}"}, json=body
+            )
+        if resp.status_code != 200:
+            raise GenerationError(f"groq {resp.status_code}: {resp.text[:200]}")
+        try:
+            content = resp.json()["choices"][0]["message"]["content"]
+            raw = json.loads(content)
+        except (KeyError, IndexError, json.JSONDecodeError) as error:
+            raise GenerationError(f"groq parse error: {error}") from error
+
+        spec = coerce_template(raw)
+        if not spec["system_prompt"] or not spec["seed_chips"]:
+            raise GenerationError("groq returned an incomplete template")
+        return spec

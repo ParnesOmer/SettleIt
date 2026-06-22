@@ -6,6 +6,7 @@ Gemini→Groq fallback is transparent to the routes.
 
 from __future__ import annotations
 
+import re
 from typing import Protocol, TypedDict, runtime_checkable
 
 
@@ -24,6 +25,13 @@ class MissionSpec(TypedDict):
     title: str
     description: str
     search_query: str
+
+
+class TemplateSpec(TypedDict):
+    system_prompt: str
+    seed_chips: list[dict]
+    metadata_fields: list[dict]
+    mission_strategy: str
 
 
 class GenerationError(Exception):
@@ -56,6 +64,10 @@ class LLMProvider(Protocol):
         count: int,
     ) -> list[MissionSpec]:
         """Turn the locked decision into concrete missions, each with an optional search query."""
+        ...
+
+    async def generate_template(self, *, topic: str) -> TemplateSpec:
+        """Design a whole decision room for an arbitrary topic (custom-topic pipeline)."""
         ...
 
 
@@ -145,6 +157,54 @@ def coerce_missions(raw: object) -> list[MissionSpec]:
     return missions
 
 
+def build_template_prompt(topic: str) -> str:
+    return (
+        f'Design a group decision room for this topic: "{topic}".\n'
+        "Produce:\n"
+        "- system_prompt: instructions for an agent to propose distinct, specific, real options for "
+        "this exact topic, each with a warm one-line rationale grounded in what the group says.\n"
+        "- seed_chips: 3 to 5 quick constraint questions; each has a short id, a label (the "
+        "question), and 2 to 5 options.\n"
+        "- metadata_fields: 1 to 3 attributes each option card should show (key + short label).\n"
+        "- mission_strategy: one or two sentences on how to break the chosen option into concrete "
+        "next steps."
+    )
+
+
+def _slug(text: str, fallback: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return slug[:24] or fallback
+
+
+def coerce_template(raw: object) -> TemplateSpec:
+    data = raw if isinstance(raw, dict) else {}
+
+    seed_chips: list[dict] = []
+    for i, chip in enumerate(data.get("seed_chips") or []):
+        if not isinstance(chip, dict):
+            continue
+        label = str(chip.get("label", "")).strip()
+        if not label:
+            continue
+        options = [str(o).strip() for o in (chip.get("options") or []) if str(o).strip()]
+        chip_id = str(chip.get("id") or "").strip() or _slug(label, f"chip{i}")
+        seed_chips.append({"id": chip_id, "label": label, "options": options})
+
+    metadata_fields: list[dict] = []
+    for field in data.get("metadata_fields") or []:
+        if not isinstance(field, dict) or not field.get("key"):
+            continue
+        key = _slug(str(field["key"]), "field")
+        metadata_fields.append({"key": key, "label": str(field.get("label") or field["key"])})
+
+    return {
+        "system_prompt": str(data.get("system_prompt", "")).strip(),
+        "seed_chips": seed_chips,
+        "metadata_fields": metadata_fields,
+        "mission_strategy": str(data.get("mission_strategy", "")).strip(),
+    }
+
+
 class FallbackProvider:
     """Tries each provider in order; on any failure (quota, parse, network) moves to the next."""
 
@@ -167,6 +227,15 @@ class FallbackProvider:
         for provider in self._providers:
             try:
                 return await provider.generate_missions(**kwargs)
+            except Exception as error:  # noqa: BLE001 — intentional: fall through to next provider
+                last_error = error
+        raise GenerationError(f"all providers failed: {last_error}")
+
+    async def generate_template(self, **kwargs) -> TemplateSpec:
+        last_error: Exception | None = None
+        for provider in self._providers:
+            try:
+                return await provider.generate_template(**kwargs)
             except Exception as error:  # noqa: BLE001 — intentional: fall through to next provider
                 last_error = error
         raise GenerationError(f"all providers failed: {last_error}")

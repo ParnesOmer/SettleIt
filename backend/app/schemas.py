@@ -112,6 +112,11 @@ class CreateRoomIn(BaseModel):
     display_name: str = Field(min_length=1, max_length=60)
 
 
+class CreateCustomRoomIn(BaseModel):
+    topic: str = Field(min_length=1, max_length=200)
+    display_name: str = Field(min_length=1, max_length=60)
+
+
 class JoinRoomIn(BaseModel):
     display_name: str = Field(min_length=1, max_length=60)
 

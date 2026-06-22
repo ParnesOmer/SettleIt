@@ -24,6 +24,7 @@ import type {
   SeedChip,
   Suggestion,
   SuggestionSet,
+  Template,
   VoteResult,
 } from "@/types/api";
 
@@ -147,6 +148,11 @@ export default function Room() {
           setMissions((prev) => prev.map((m) => (m.id === mission.id ? mission : m)));
           break;
         }
+        case "template_ready": {
+          const template = event.payload as Template;
+          setRoom((prev) => (prev ? { ...prev, template } : prev));
+          break;
+        }
       }
     },
     [addMessage],
@@ -157,6 +163,25 @@ export default function Room() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
+
+  // Robustness: if a custom room is still being designed, poll until the template lands (in case
+  // the template_ready socket event is missed).
+  useEffect(() => {
+    if (!id || !room) return;
+    const stillDesigning = room.template.is_custom && room.template.seed_chips.length === 0;
+    if (!stillDesigning) return;
+    const timer = setInterval(async () => {
+      try {
+        const data = await api.getRoom(id);
+        if (!data.template.is_custom || data.template.seed_chips.length > 0) {
+          setRoom((prev) => (prev ? { ...prev, template: data.template } : prev));
+        }
+      } catch {
+        // ignore — next tick retries
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [id, room]);
 
   async function send(content: string) {
     const text = content.trim();
@@ -266,6 +291,28 @@ export default function Room() {
       <main className="flex min-h-dvh items-center justify-center">
         <Loader2 className="size-6 animate-spin text-plum" />
       </main>
+    );
+  }
+
+  if (room.template.is_custom && room.template.seed_chips.length === 0) {
+    return (
+      <div className="mx-auto flex h-dvh max-w-lg flex-col items-center justify-center bg-paper px-8 text-center sm:border-x sm:border-border">
+        <div className="flex items-center justify-center gap-1.5">
+          {[0, 1, 2, 3].map((i) => (
+            <motion.span
+              key={i}
+              className="size-2.5 rounded-full bg-marigold"
+              animate={{ opacity: [0.3, 1, 0.3], y: [0, -4, 0] }}
+              transition={{ duration: 1.1, repeat: Infinity, delay: i * 0.15 }}
+            />
+          ))}
+        </div>
+        <h1 className="mt-5 font-display text-2xl font-bold text-ink">Designing your room…</h1>
+        <p className="mt-2 max-w-xs text-muted-foreground">
+          Setting up the questions and the game plan for{" "}
+          <span className="text-ink">"{room.topic}"</span>.
+        </p>
+      </div>
     );
   }
 

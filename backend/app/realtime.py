@@ -23,6 +23,7 @@ EventType = Literal[
     "decision_locked",
     "missions_ready",
     "mission_updated",
+    "template_ready",
 ]
 
 

@@ -11,6 +11,8 @@ import { saveToken } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import type { Template } from "@/types/api";
 
+const CUSTOM = "__custom__";
+
 export default function CreateRoom() {
   const navigate = useNavigate();
   const [templates, setTemplates] = useState<Template[] | null>(null);
@@ -38,19 +40,22 @@ export default function CreateRoom() {
     };
   }, []);
 
+  const isCustom = selectedId === CUSTOM;
   const canCreate = Boolean(selectedId) && name.trim().length > 0 && topic.trim().length > 0;
 
   async function handleCreate() {
     if (!selectedId || !canCreate) return;
     setCreating(true);
     try {
-      const room = await api.createRoom({
-        template_id: selectedId,
-        topic: topic.trim(),
-        display_name: name.trim(),
-      });
+      const room = isCustom
+        ? await api.createCustomRoom(topic.trim(), name.trim())
+        : await api.createRoom({
+            template_id: selectedId,
+            topic: topic.trim(),
+            display_name: name.trim(),
+          });
       if (room.session_token) saveToken(room.id, room.session_token);
-      toast.success("Room created");
+      toast.success(isCustom ? "Designing your room…" : "Room created");
       navigate(`/room/${room.id}`);
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Couldn't create the room. Try again.");
@@ -106,16 +111,22 @@ export default function CreateRoom() {
                     }}
                   />
                 ))}
-                <CustomTopicCard />
+                <CustomTopicCard
+                  selected={isCustom}
+                  onSelect={() => {
+                    setSelectedId(CUSTOM);
+                    setTopic("");
+                  }}
+                />
               </div>
             )}
           </Field>
 
-          <Field label="Name this huddle">
+          <Field label={isCustom ? "What are you deciding?" : "Name this huddle"}>
             <Input
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
-              placeholder="e.g. Friday movie night"
+              placeholder={isCustom ? "e.g. a weekend trip to Lisbon" : "e.g. Friday movie night"}
               maxLength={200}
             />
           </Field>
@@ -124,12 +135,12 @@ export default function CreateRoom() {
             {creating ? (
               <>
                 <Loader2 className="animate-spin" />
-                Creating…
+                {isCustom ? "Designing…" : "Creating…"}
               </>
             ) : (
               <>
-                Create room
-                <ArrowRight />
+                {isCustom ? "Design my room" : "Create room"}
+                {isCustom ? <Sparkles /> : <ArrowRight />}
               </>
             )}
           </Button>
@@ -185,20 +196,31 @@ function TopicCard({
   );
 }
 
-function CustomTopicCard() {
+function CustomTopicCard({ selected, onSelect }: { selected: boolean; onSelect: () => void }) {
   return (
-    <div className="flex w-full items-center gap-3 rounded-lg border border-dashed border-border bg-transparent p-3.5 text-left opacity-70">
-      <span className="flex size-10 items-center justify-center rounded-md bg-muted text-plum">
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-lg border bg-card p-3.5 text-left transition-colors",
+        selected
+          ? "border-marigold ring-1 ring-marigold"
+          : "border-dashed border-border hover:border-secondary/50",
+      )}
+    >
+      <span
+        className={cn(
+          "flex size-10 items-center justify-center rounded-md",
+          selected ? "bg-marigold text-ink" : "bg-muted text-plum",
+        )}
+      >
         <Sparkles className="size-5" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block font-display text-lg font-semibold text-ink">Custom topic</span>
         <span className="block text-sm text-muted-foreground">Describe anything — we'll design the room</span>
       </span>
-      <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 font-mono text-xs text-muted-foreground">
-        soon
-      </span>
-    </div>
+    </button>
   );
 }
 

@@ -124,7 +124,8 @@ export type RoomEventType =
   | "vote_updated"
   | "decision_locked"
   | "missions_ready"
-  | "mission_updated";
+  | "mission_updated"
+  | "template_ready";
 
 export interface RoomEvent<T = unknown> {
   type: RoomEventType;

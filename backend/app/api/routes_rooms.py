@@ -27,6 +27,7 @@ from ..models import (
 from ..models import Member as MemberModel
 from ..realtime import broadcaster, make_event
 from ..schemas import (
+    CreateCustomRoomIn,
     CreateMessageIn,
     CreateRoomIn,
     DecideIn,
@@ -49,6 +50,7 @@ from ..security import (
     set_session_cookie,
 )
 from ..serializers import current_set_out, mission_out, missions_out, suggestion_set_out
+from ..templating import run_template_generation
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
@@ -183,6 +185,51 @@ async def create_room(
     await session.commit()
 
     set_session_cookie(response, token)
+    state = await _build_room_state(session, room, admin)
+    state.session_token = token
+    return state
+
+
+@router.post("/custom", response_model=RoomState, status_code=201)
+async def create_custom_room(
+    body: CreateCustomRoomIn,
+    request: Request,
+    response: Response,
+    background: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+) -> RoomState:
+    topic = body.topic.strip()
+    # Placeholder template; a background job designs it (chips/prompt/card shape/execution spec).
+    template = Template(
+        topic_name=topic[:120],
+        is_custom=True,
+        system_prompt="",
+        seed_chips=[],
+        card_shape={},
+        execution_spec={},
+    )
+    session.add(template)
+    await session.flush()
+
+    invite_code = await _unique_invite_code(session)
+    room = Room(template_id=template.id, topic=topic, invite_code=invite_code)
+    session.add(room)
+    await session.flush()
+
+    token = generate_session_token()
+    admin = MemberModel(
+        room_id=room.id,
+        display_name=body.display_name.strip(),
+        role=MemberRole.admin,
+        session_token=token,
+    )
+    session.add(admin)
+    await session.flush()
+    await session.refresh(admin, ["created_at"])
+    await session.commit()
+
+    set_session_cookie(response, token)
+    background.add_task(run_template_generation, template.id, topic)
     state = await _build_room_state(session, room, admin)
     state.session_token = token
     return state

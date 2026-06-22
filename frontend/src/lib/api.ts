@@ -54,6 +54,11 @@ export const api = {
   getTemplates: () => request<Template[]>("/api/templates"),
   createRoom: (body: CreateRoomBody) =>
     request<RoomState>("/api/rooms", { method: "POST", body: JSON.stringify(body) }),
+  createCustomRoom: (topic: string, displayName: string) =>
+    request<RoomState>("/api/rooms/custom", {
+      method: "POST",
+      body: JSON.stringify({ topic, display_name: displayName }),
+    }),
   getRoomPreview: (code: string) =>
     request<RoomPreview>(`/api/rooms/by-invite/${encodeURIComponent(code)}`),
   joinRoom: (code: string, displayName: string) =>

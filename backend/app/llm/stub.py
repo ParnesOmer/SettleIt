@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 
-from .base import Card, MissionSpec, TranscriptLine
+from .base import Card, MissionSpec, TemplateSpec, TranscriptLine
 
 _CATALOG: list[Card] = [
     {"title": "Dune: Part Two", "rationale": "Big-screen spectacle everyone's been meaning to catch.", "metadata": {"year": "2024", "runtime": "2h 46m", "where_to_watch": "Max"}},
@@ -81,3 +81,20 @@ class StubProvider:
             },
         ]
         return missions[:count]
+
+    async def generate_template(self, *, topic: str) -> TemplateSpec:
+        await asyncio.sleep(1.4)
+        return {
+            "system_prompt": (
+                f"You are SettleIt's agent for: {topic}. Read the group's chat and propose distinct, "
+                "specific, real options for this exact decision, each with a warm one-line rationale "
+                "grounded in what the group said. Never invent constraints they didn't mention."
+            ),
+            "seed_chips": [
+                {"id": "when", "label": "When?", "options": ["Soon", "This month", "Flexible"]},
+                {"id": "budget", "label": "Budget?", "options": ["Low", "Medium", "Treat ourselves"]},
+                {"id": "vibe", "label": "Vibe?", "options": ["Chill", "Adventurous", "Special"]},
+            ],
+            "metadata_fields": [{"key": "detail", "label": "Detail"}],
+            "mission_strategy": f"Break the chosen option for '{topic}' into the few concrete steps that make it actually happen.",
+        }
