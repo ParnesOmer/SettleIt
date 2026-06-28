@@ -58,11 +58,14 @@ async def run_template_generation(template_id: uuid.UUID, topic: str, language: 
             "mission_strategy": spec.get("mission_strategy", ""),
             "missions": [],
         }
-        await session.commit()
 
         room = await session.scalar(select(Room).where(Room.template_id == template_id))
+        if room is not None and spec.get("welcome_blurb"):
+            room.welcome_blurb = spec["welcome_blurb"]
+
+        await session.commit()
+
         if room is not None:
-            await broadcaster.broadcast(
-                str(room.id),
-                make_event("template_ready", TemplateOut.model_validate(template).model_dump(mode="json")),
-            )
+            payload = TemplateOut.model_validate(template).model_dump(mode="json")
+            payload["welcome_blurb"] = room.welcome_blurb
+            await broadcaster.broadcast(str(room.id), make_event("template_ready", payload))

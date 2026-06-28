@@ -120,6 +120,9 @@ class Room(Base):
         ForeignKey("suggestions.id", ondelete="SET NULL", use_alter=True, name="fk_rooms_decided_suggestion"),
         nullable=True,
     )
+    welcome_blurb: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
     generation_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
@@ -178,6 +181,9 @@ class Message(Base):
         ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="chat", server_default="chat"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )

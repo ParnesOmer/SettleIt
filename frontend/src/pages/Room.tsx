@@ -80,6 +80,7 @@ export default function Room() {
   const [requiresApproval, setRequiresApproval] = useState(false);
   const [pendingMembers, setPendingMembers] = useState<Member[]>([]);
   const [extraChips, setExtraChips] = useState<SeedChip[]>([]);
+  const [chipCustom, setChipCustom] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const [addChipOpen, setAddChipOpen] = useState(false);
@@ -215,8 +216,16 @@ export default function Room() {
           break;
         }
         case "template_ready": {
-          const template = event.payload as Template;
-          setRoom((prev) => (prev ? { ...prev, template } : prev));
+          const payload = event.payload as Template & { welcome_blurb?: string };
+          setRoom((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  template: payload,
+                  welcome_blurb: payload.welcome_blurb ?? prev.welcome_blurb,
+                }
+              : prev,
+          );
           break;
         }
         case "room_closed": {
@@ -274,20 +283,23 @@ export default function Room() {
     return () => clearInterval(timer);
   }, [id, room, hydrate, navigate]);
 
-  async function send(content: string) {
+  async function send(content: string, kind = "chat") {
     const text = content.trim();
     if (!id || text.length === 0) return;
     try {
-      addMessage(await api.postMessage(id, text));
+      addMessage(await api.postMessage(id, text, kind));
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Message didn't send. Try again.");
     }
   }
 
   async function chooseChip(chip: SeedChip, option: string) {
-    setAnswers((prev) => ({ ...prev, [chip.id]: option }));
+    const text = option.trim();
+    if (!text) return;
+    setAnswers((prev) => ({ ...prev, [chip.id]: text }));
     setActiveChip(null);
-    await send(`${localizeChip(chip, lang).label} ${option}`);
+    setChipCustom("");
+    await send(`${localizeChip(chip, lang).label}: ${text}`, "chip_response");
   }
 
   async function handleGenerate() {
@@ -632,7 +644,10 @@ export default function Room() {
                 <button
                   key={chip.id}
                   type="button"
-                  onClick={() => setActiveChip((cur) => (cur === chip.id ? null : chip.id))}
+                  onClick={() => {
+                    setActiveChip((cur) => (cur === chip.id ? null : chip.id));
+                    setChipCustom("");
+                  }}
                   className="flex shrink-0 items-center gap-1.5 rounded-full border border-plum/40 px-3 py-1.5 text-sm text-plum transition-colors hover:bg-plum/5"
                 >
                   {localizeChip(chip, lang).label}
@@ -668,6 +683,30 @@ export default function Room() {
                       </button>
                     ))}
                   </div>
+                  <form
+                    className="mt-2 flex gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void chooseChip(openChip, chipCustom);
+                    }}
+                  >
+                    <Input
+                      value={chipCustom}
+                      onChange={(e) => setChipCustom(e.target.value)}
+                      placeholder={t("room.chipCustomPlaceholder")}
+                      maxLength={200}
+                      className="h-8 text-sm"
+                    />
+                    <Button
+                      type="submit"
+                      size="sm"
+                      variant="outline"
+                      disabled={chipCustom.trim().length === 0}
+                      className="shrink-0"
+                    >
+                      <Send className="size-3.5" />
+                    </Button>
+                  </form>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -705,7 +744,7 @@ export default function Room() {
         )}
 
         {messages.length === 0 && !hasSet && !postDecision ? (
-          <EmptyChat />
+          <EmptyChat blurb={room.welcome_blurb} />
         ) : (
           <div className={postDecision ? "mt-7" : undefined}>
             {postDecision && (
@@ -715,9 +754,9 @@ export default function Room() {
               </div>
             )}
             <div className="space-y-2.5">
-              {messages.map((msg, i) => {
+              {messages.filter((m) => m.kind !== "chip_response").map((msg, i, arr) => {
                 const mine = msg.member_id === meId;
-                const showName = !mine && (i === 0 || messages[i - 1].member_id !== msg.member_id);
+                const showName = !mine && (i === 0 || arr[i - 1].member_id !== msg.member_id);
                 return <MessageBubble key={msg.id} message={msg} mine={mine} showName={showName} />;
               })}
             </div>
@@ -897,7 +936,7 @@ function MessageBubble({
   );
 }
 
-function EmptyChat() {
+function EmptyChat({ blurb }: { blurb?: string }) {
   const { t } = useT();
   return (
     <div className="flex h-full flex-col items-center justify-center px-6 text-center">
@@ -905,7 +944,9 @@ function EmptyChat() {
         <Sparkles className="size-6" />
       </div>
       <p className="mt-4 font-display text-lg font-semibold text-ink">{t("room.emptyTitle")}</p>
-      <p className="mt-1 max-w-xs text-sm text-muted-foreground">{t("room.emptyBody")}</p>
+      <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+        {blurb || t("room.emptyBody")}
+      </p>
     </div>
   );
 }

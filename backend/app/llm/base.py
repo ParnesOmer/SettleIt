@@ -32,6 +32,7 @@ class TemplateSpec(TypedDict):
     seed_chips: list[dict]
     metadata_fields: list[dict]
     mission_strategy: str
+    welcome_blurb: str
 
 
 class GenerationError(Exception):
@@ -181,12 +182,16 @@ def build_template_prompt(topic: str, language: str = "en") -> str:
         "lowercase), a label (the question), and 2 to 5 options.\n"
         "- metadata_fields: 1 to 3 attributes each option card should show (english key + short label).\n"
         "- mission_strategy: one or two sentences on how to break the chosen option into concrete "
-        "next steps."
+        "next steps.\n"
+        "- welcome_blurb: one friendly sentence (max 25 words) shown to group members on the join "
+        "screen before they enter the room — explain what the group is deciding and what they should "
+        'do (e.g. "Your group is deciding where to eat Friday — answer a couple of quick questions '
+        'and the app will suggest options everyone agrees on.").'
     )
     if language == "he":
         base += (
-            "\nWrite the system_prompt, every chip label, every option, and each metadata label and "
-            "mission_strategy in Hebrew. Keep the chip ids and metadata keys in english."
+            "\nWrite the system_prompt, every chip label, every option, each metadata label, "
+            "mission_strategy, and welcome_blurb in Hebrew. Keep the chip ids and metadata keys in english."
         )
     return base
 
@@ -222,6 +227,7 @@ def coerce_template(raw: object) -> TemplateSpec:
         "seed_chips": seed_chips,
         "metadata_fields": metadata_fields,
         "mission_strategy": str(data.get("mission_strategy", "")).strip(),
+        "welcome_blurb": str(data.get("welcome_blurb", "")).strip(),
     }
 
 

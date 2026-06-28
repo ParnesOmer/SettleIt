@@ -167,6 +167,7 @@ const dict: Record<Lang, Record<string, string>> = {
     "err.badTitle": "Hmm, that didn't work",
     "err.roomGone": "This huddle doesn't exist.",
     "err.roomLoad": "We couldn't load this huddle. Check your connection and try again.",
+    "room.chipCustomPlaceholder": "Or type your own…",
     // language toggle (label shows the OTHER language)
     "lang.toggle": "עברית",
   },
@@ -306,6 +307,7 @@ const dict: Record<Lang, Record<string, string>> = {
     "err.badTitle": "אופס, משהו השתבש",
     "err.roomGone": "החדר לא קיים.",
     "err.roomLoad": "לא הצלחנו לטעון את החדר. בדקו את החיבור ונסו שוב.",
+    "room.chipCustomPlaceholder": "או כתבו משהו אחר…",
     "lang.toggle": "English",
   },
 };

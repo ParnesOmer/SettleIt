@@ -68,10 +68,10 @@ export const api = {
       body: JSON.stringify({ display_name: displayName }),
     }),
   getRoom: (id: string) => request<RoomState>(`/api/rooms/${id}`),
-  postMessage: (id: string, content: string) =>
+  postMessage: (id: string, content: string, kind = "chat") =>
     request<Message>(`/api/rooms/${id}/messages`, {
       method: "POST",
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, kind }),
     }),
   generate: (id: string, refinement?: string) =>
     request<GenerateAccepted>(`/api/rooms/${id}/generate`, {

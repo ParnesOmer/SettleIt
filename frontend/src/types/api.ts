@@ -35,6 +35,7 @@ export interface Message {
   member_id: string;
   author_name: string;
   content: string;
+  kind: string;
   created_at: string;
 }
 
@@ -102,6 +103,7 @@ export interface RoomState {
   requires_approval: boolean;
   pending_members: Member[];
   extra_chips: SeedChip[];
+  welcome_blurb: string;
   me: Member | null;
   session_token?: string | null;
 }
@@ -113,6 +115,7 @@ export interface RoomPreview {
   member_count: number;
   members: string[];
   already_member: boolean;
+  welcome_blurb: string;
 }
 
 export interface CreateRoomBody {

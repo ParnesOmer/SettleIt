@@ -140,6 +140,7 @@ async def _message_outs(session: AsyncSession, room_id: uuid.UUID) -> list[Messa
             member_id=msg.member_id,
             author_name=name,
             content=msg.content,
+            kind=msg.kind,
             created_at=msg.created_at,
         )
         for msg, name in rows.all()
@@ -188,6 +189,7 @@ async def _build_room_state(
         pending_members=[MemberOut.model_validate(m) for m in pending],
         extra_chips=room.extra_chips or [],
         content_language=room.content_language,
+        welcome_blurb=room.welcome_blurb or "",
         me=MemberOut.model_validate(me) if me is not None else None,
     )
 
@@ -203,12 +205,18 @@ async def create_room(
     if template is None:
         raise HTTPException(status_code=404, detail="That template doesn't exist.")
 
+    topic = body.topic.strip()
     invite_code = await _unique_invite_code(session)
+    blurb = (
+        f"Your group is deciding {topic}. "
+        "Answer the quick questions at the top — then the app suggests options everyone can agree on."
+    )
     room = Room(
         template_id=template.id,
-        topic=body.topic.strip(),
+        topic=topic,
         invite_code=invite_code,
         content_language="he" if body.language == "he" else "en",
+        welcome_blurb=blurb,
     )
     session.add(room)
     await session.flush()
@@ -296,6 +304,7 @@ async def preview_room(
         member_count=len(members),
         members=[m.display_name for m in members],
         already_member=already_member,
+        welcome_blurb=room.welcome_blurb or "",
     )
 
 
@@ -366,7 +375,7 @@ async def post_message(
         raise HTTPException(status_code=403, detail="Join the huddle to chat.")
     _ensure_open(room)
 
-    message = Message(room_id=room.id, member_id=me.id, content=body.content.strip())
+    message = Message(room_id=room.id, member_id=me.id, content=body.content.strip(), kind=body.kind)
     session.add(message)
     await session.flush()
     await session.refresh(message, ["created_at"])
@@ -377,6 +386,7 @@ async def post_message(
         member_id=me.id,
         author_name=me.display_name,
         content=message.content,
+        kind=message.kind,
         created_at=message.created_at,
     )
     await broadcaster.broadcast(

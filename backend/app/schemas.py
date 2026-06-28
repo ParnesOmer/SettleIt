@@ -43,6 +43,7 @@ class MessageOut(BaseModel):
     member_id: uuid.UUID
     author_name: str
     content: str
+    kind: str = "chat"
     created_at: datetime
 
 
@@ -97,6 +98,7 @@ class RoomState(BaseModel):
     pending_members: list[MemberOut] = []
     extra_chips: list[SeedChip] = []
     content_language: str = "en"
+    welcome_blurb: str = ""
     me: MemberOut | None = None
     # Populated only on create/join so the client can store it and send it back as a header
     # (cross-site auth where third-party cookies are blocked).
@@ -110,6 +112,7 @@ class RoomPreview(BaseModel):
     member_count: int
     members: list[str]
     already_member: bool
+    welcome_blurb: str = ""
 
 
 class CreateRoomIn(BaseModel):
@@ -145,6 +148,7 @@ class AddMissionIn(BaseModel):
 
 class CreateMessageIn(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
+    kind: str = "chat"
 
 
 class GenerateIn(BaseModel):
