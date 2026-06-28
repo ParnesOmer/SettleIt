@@ -168,6 +168,14 @@ const dict: Record<Lang, Record<string, string>> = {
     "err.roomGone": "This huddle doesn't exist.",
     "err.roomLoad": "We couldn't load this huddle. Check your connection and try again.",
     "room.chipCustomPlaceholder": "Or type your own…",
+    "room.chipHint": "↑ Tap a question to help shape the suggestions",
+    "room.refinePlaceholder": "Refine before regenerating (optional)…",
+    "room.voteProgress": "{n} of {total} people backed an idea",
+    "room.waitingIdeas": "Waiting for the host to generate ideas…",
+    // tab bar
+    "tab.chat": "Chat",
+    "tab.ideas": "Ideas",
+    "tab.missions": "Missions",
     // language toggle (label shows the OTHER language)
     "lang.toggle": "עברית",
   },
@@ -308,6 +316,13 @@ const dict: Record<Lang, Record<string, string>> = {
     "err.roomGone": "החדר לא קיים.",
     "err.roomLoad": "לא הצלחנו לטעון את החדר. בדקו את החיבור ונסו שוב.",
     "room.chipCustomPlaceholder": "או כתבו משהו אחר…",
+    "room.chipHint": "↑ הקישו על שאלה כדי לעזור לעצב את ההצעות",
+    "room.refinePlaceholder": "רוצים לכוון לפני הפקה מחדש? (לא חובה)…",
+    "room.voteProgress": "{n} מתוך {total} תמכו ברעיון",
+    "room.waitingIdeas": "ממתינים למארח שיפיק רעיונות…",
+    "tab.chat": "צ'אט",
+    "tab.ideas": "רעיונות",
+    "tab.missions": "משימות",
     "lang.toggle": "English",
   },
 };
