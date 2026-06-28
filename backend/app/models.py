@@ -123,6 +123,9 @@ class Room(Base):
     welcome_blurb: Mapped[str] = mapped_column(
         Text, nullable=False, default="", server_default=""
     )
+    conversation_starters: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     generation_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )

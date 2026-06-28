@@ -104,6 +104,7 @@ export interface RoomState {
   pending_members: Member[];
   extra_chips: SeedChip[];
   welcome_blurb: string;
+  conversation_starters: string[];
   me: Member | null;
   session_token?: string | null;
 }

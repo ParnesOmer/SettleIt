@@ -99,6 +99,12 @@ export default function Room() {
   const [missionsDot, setMissionsDot] = useState(false);
   const activeTabRef = useRef<Tab>("chat");
 
+  // Post-chip nudge
+  const [showChipNudge, setShowChipNudge] = useState(false);
+
+  // Ref for the chat input — lets starter clicks pre-fill and focus it
+  const draftInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     activeTabRef.current = activeTab;
   }, [activeTab]);
@@ -254,13 +260,14 @@ export default function Room() {
           break;
         }
         case "template_ready": {
-          const payload = event.payload as Template & { welcome_blurb?: string };
+          const payload = event.payload as Template & { welcome_blurb?: string; conversation_starters?: string[] };
           setRoom((prev) =>
             prev
               ? {
                   ...prev,
                   template: payload,
                   welcome_blurb: payload.welcome_blurb ?? prev.welcome_blurb,
+                  conversation_starters: payload.conversation_starters ?? prev.conversation_starters,
                 }
               : prev,
           );
@@ -286,6 +293,12 @@ export default function Room() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
+
+  useEffect(() => {
+    if (!showChipNudge) return;
+    const timer = setTimeout(() => setShowChipNudge(false), 5000);
+    return () => clearTimeout(timer);
+  }, [showChipNudge]);
 
   useEffect(() => {
     if (!id || !room) return;
@@ -334,6 +347,7 @@ export default function Room() {
     setAnswers((prev) => ({ ...prev, [chip.id]: text }));
     setActiveChip(null);
     setChipCustom("");
+    setShowChipNudge(true);
     await send(`${localizeChip(chip, lang).label}: ${text}`, "chip_response");
   }
 
@@ -511,6 +525,12 @@ export default function Room() {
     }
   }
 
+  function handleStarterClick(text: string) {
+    setDraft(text);
+    switchTab("chat");
+    setTimeout(() => draftInputRef.current?.focus(), 50);
+  }
+
   function shareInvite() {
     if (!room) return;
     const link = `${window.location.origin}/j/${room.invite_code}`;
@@ -595,6 +615,9 @@ export default function Room() {
 
   // Chip hint: shown until the user answers their first chip
   const showChipHint = !postDecision && unansweredChips.length > 0 && Object.keys(answers).length === 0;
+
+  // Conversation starters: shown in empty chat until first real message is sent
+  const hasChatMessages = messages.some((m) => m.kind === "chat");
 
   // Vote progress
   const voterCount = new Set(
@@ -786,7 +809,11 @@ export default function Room() {
           )}
 
           {messages.filter((m) => m.kind !== "chip_response").length === 0 ? (
-            <EmptyChat blurb={room.welcome_blurb} />
+            <EmptyChat
+              blurb={room.welcome_blurb}
+              starters={hasChatMessages ? [] : (room.conversation_starters ?? [])}
+              onStarterClick={handleStarterClick}
+            />
           ) : (
             <div className="space-y-2.5">
               {messages.filter((m) => m.kind !== "chip_response").map((msg, i, arr) => {
@@ -891,6 +918,31 @@ export default function Room() {
         </div>
       </div>
 
+      {/* ── POST-CHIP NUDGE ── */}
+      <AnimatePresence>
+        {showChipNudge && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            className="mx-4 mb-2 flex shrink-0 items-center justify-between gap-3 rounded-xl bg-plum/10 px-3.5 py-2.5"
+          >
+            <p className="text-xs text-plum">{t("room.chipNudge")}</p>
+            <button
+              type="button"
+              className="shrink-0 text-xs font-semibold text-plum hover:underline"
+              onClick={() => {
+                switchTab("chat");
+                setShowChipNudge(false);
+                setTimeout(() => draftInputRef.current?.focus(), 50);
+              }}
+            >
+              {t("room.chipNudgeCta")} →
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── CHAT INPUT (only on chat tab) ── */}
       {!closed && activeTab === "chat" && (
         <form
@@ -902,6 +954,7 @@ export default function Room() {
           }}
         >
           <Input
+            ref={draftInputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={postDecision ? t("room.composerDecided") : t("room.composer")}
@@ -1083,7 +1136,15 @@ function MessageBubble({
   );
 }
 
-function EmptyChat({ blurb }: { blurb?: string }) {
+function EmptyChat({
+  blurb,
+  starters = [],
+  onStarterClick,
+}: {
+  blurb?: string;
+  starters?: string[];
+  onStarterClick?: (text: string) => void;
+}) {
   const { t } = useT();
   return (
     <div className="flex h-full flex-col items-center justify-center px-6 text-center">
@@ -1094,6 +1155,23 @@ function EmptyChat({ blurb }: { blurb?: string }) {
       <p className="mt-1 max-w-xs text-sm text-muted-foreground">
         {blurb || t("room.emptyBody")}
       </p>
+      {starters.length > 0 && (
+        <div className="mt-5 flex w-full max-w-xs flex-col gap-2">
+          {starters.map((s, i) => (
+            <motion.button
+              key={i}
+              type="button"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.07 }}
+              onClick={() => onStarterClick?.(s)}
+              className="rounded-xl border border-border bg-card px-4 py-2.5 text-sm text-ink transition-colors hover:bg-accent"
+            >
+              {s}
+            </motion.button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

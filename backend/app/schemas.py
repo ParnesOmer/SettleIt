@@ -99,6 +99,7 @@ class RoomState(BaseModel):
     extra_chips: list[SeedChip] = []
     content_language: str = "en"
     welcome_blurb: str = ""
+    conversation_starters: list[str] = []
     me: MemberOut | None = None
     # Populated only on create/join so the client can store it and send it back as a header
     # (cross-site auth where third-party cookies are blocked).

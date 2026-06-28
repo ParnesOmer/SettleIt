@@ -190,6 +190,7 @@ async def _build_room_state(
         extra_chips=room.extra_chips or [],
         content_language=room.content_language,
         welcome_blurb=room.welcome_blurb or "",
+        conversation_starters=room.conversation_starters or [],
         me=MemberOut.model_validate(me) if me is not None else None,
     )
 
@@ -206,17 +207,30 @@ async def create_room(
         raise HTTPException(status_code=404, detail="That template doesn't exist.")
 
     topic = body.topic.strip()
+    language = "he" if body.language == "he" else "en"
     invite_code = await _unique_invite_code(session)
-    blurb = (
-        f"Your group is deciding {topic}. "
-        "Answer the quick questions at the top — then the app suggests options everyone can agree on."
-    )
+
+    if language == "he":
+        blurb = (
+            f"הקבוצה שלכם מחליטה על: {topic}. "
+            "ענו על השאלות למעלה ושתפו את מחשבותיכם בצ'אט — ככל שתשתפו יותר, ההצעות יהיו מדויקות יותר."
+        )
+        starters = ["מה אתם מקווים שיהיה?", "יש משהו שהייתם מעדיפים להימנע ממנו?", "מה הכי חשוב לכם?"]
+    else:
+        blurb = (
+            f"Your group is deciding {topic}. "
+            "Answer the questions and share your thoughts in the chat — "
+            "the more everyone contributes, the smarter the suggestions."
+        )
+        starters = ["What are you hoping for?", "Anything you'd like to avoid?", "What matters most to you?"]
+
     room = Room(
         template_id=template.id,
         topic=topic,
         invite_code=invite_code,
-        content_language="he" if body.language == "he" else "en",
+        content_language=language,
         welcome_blurb=blurb,
+        conversation_starters=starters,
     )
     session.add(room)
     await session.flush()
