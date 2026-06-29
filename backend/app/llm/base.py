@@ -32,6 +32,8 @@ class TemplateSpec(TypedDict):
     seed_chips: list[dict]
     metadata_fields: list[dict]
     mission_strategy: str
+    welcome_blurb: str
+    conversation_starters: list[str]
 
 
 class GenerationError(Exception):
@@ -181,12 +183,23 @@ def build_template_prompt(topic: str, language: str = "en") -> str:
         "lowercase), a label (the question), and 2 to 5 options.\n"
         "- metadata_fields: 1 to 3 attributes each option card should show (english key + short label).\n"
         "- mission_strategy: one or two sentences on how to break the chosen option into concrete "
-        "next steps."
+        "next steps.\n"
+        "- welcome_blurb: one friendly sentence (max 25 words) shown to group members on the join "
+        "screen before they enter the room — explain what the group is deciding and what they should "
+        "do, and mention that chatting freely makes the suggestions smarter "
+        '(e.g. "Your group is deciding where to eat Friday — answer the questions and share your '
+        'thoughts in the chat so the app can suggest options everyone actually agrees on.").\n'
+        "- conversation_starters: exactly 3 short, friendly prompts (max 10 words each) that nudge "
+        "group members to share their thoughts in the chat — they appear as tappable buttons in an "
+        "empty chat box to break the blank-canvas hesitation. Make them feel like natural conversation "
+        'openers specific to this topic, not chip option repeats (e.g. "What are you hoping for?", '
+        '"Anything you\'d like to avoid?", "What matters most to you here?").'
     )
     if language == "he":
         base += (
-            "\nWrite the system_prompt, every chip label, every option, and each metadata label and "
-            "mission_strategy in Hebrew. Keep the chip ids and metadata keys in english."
+            "\nWrite the system_prompt, every chip label, every option, each metadata label, "
+            "mission_strategy, welcome_blurb, and all conversation_starters in Hebrew. "
+            "Keep the chip ids and metadata keys in english."
         )
     return base
 
@@ -217,11 +230,18 @@ def coerce_template(raw: object) -> TemplateSpec:
         key = _slug(str(field["key"]), "field")
         metadata_fields.append({"key": key, "label": str(field.get("label") or field["key"])})
 
+    raw_starters = data.get("conversation_starters") or []
+    conversation_starters = [
+        str(s).strip() for s in raw_starters if isinstance(s, str) and str(s).strip()
+    ][:3]
+
     return {
         "system_prompt": str(data.get("system_prompt", "")).strip(),
         "seed_chips": seed_chips,
         "metadata_fields": metadata_fields,
         "mission_strategy": str(data.get("mission_strategy", "")).strip(),
+        "welcome_blurb": str(data.get("welcome_blurb", "")).strip(),
+        "conversation_starters": conversation_starters,
     }
 
 

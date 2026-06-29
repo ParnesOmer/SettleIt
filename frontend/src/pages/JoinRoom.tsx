@@ -92,6 +92,10 @@ export default function JoinRoom() {
         <p className="font-mono text-xs uppercase tracking-wide text-plum">{t("join.invitedTo")}</p>
         <h1 className="mt-1 font-display text-3xl font-bold text-ink">{preview.topic}</h1>
 
+        {preview.welcome_blurb && (
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{preview.welcome_blurb}</p>
+        )}
+
         {preview.member_count > 0 && (
           <div className="mt-4 flex items-center gap-3">
             <div className="flex">

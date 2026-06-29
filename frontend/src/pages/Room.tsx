@@ -4,7 +4,10 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Archive,
   Check,
+  Lightbulb,
+  ListChecks,
   Loader2,
+  MessageCircle,
   MoreVertical,
   Plus,
   Send,
@@ -45,6 +48,8 @@ import type {
   VoteResult,
 } from "@/types/api";
 
+type Tab = "chat" | "ideas" | "missions";
+
 function applyVotes(set: SuggestionSet, result: VoteResult): SuggestionSet {
   return {
     ...set,
@@ -80,12 +85,36 @@ export default function Room() {
   const [requiresApproval, setRequiresApproval] = useState(false);
   const [pendingMembers, setPendingMembers] = useState<Member[]>([]);
   const [extraChips, setExtraChips] = useState<SeedChip[]>([]);
+  const [chipCustom, setChipCustom] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const [addChipOpen, setAddChipOpen] = useState(false);
   const [addMissionOpen, setAddMissionOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Tab navigation
+  const [activeTab, setActiveTab] = useState<Tab>("chat");
+  const [ideasDot, setIdeasDot] = useState(false);
+  const [missionsDot, setMissionsDot] = useState(false);
+  const activeTabRef = useRef<Tab>("chat");
+
+  // Post-chip nudge
+  const [showChipNudge, setShowChipNudge] = useState(false);
+
+  // Ref for the chat input — lets starter clicks pre-fill and focus it
+  const draftInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  function switchTab(tab: Tab) {
+    setActiveTab(tab);
+    activeTabRef.current = tab;
+    if (tab === "ideas") setIdeasDot(false);
+    if (tab === "missions") setMissionsDot(false);
+  }
 
   const meId = room?.me?.id;
   const isAdmin = room?.me?.role === "admin";
@@ -120,6 +149,11 @@ export default function Room() {
           return;
         }
         hydrate(data);
+        // If room is already decided on load, go straight to missions
+        if (data.status === "decided" || data.status === "executing") {
+          setActiveTab("missions");
+          activeTabRef.current = "missions";
+        }
       })
       .catch((err) => {
         if (!active) return;
@@ -183,12 +217,18 @@ export default function Room() {
         case "generation_started": {
           const p = event.payload as { set_id: string; generation_number: number };
           setCurrentSet({ id: p.set_id, generation_number: p.generation_number, status: "pending", suggestions: [] });
+          // Show badge if user is watching chat
+          if (activeTabRef.current !== "ideas") setIdeasDot(true);
           break;
         }
         case "suggestions_ready": {
           const set = event.payload as SuggestionSet;
           setCurrentSet(set);
-          if (set.status === "failed") toast.error("Generation failed — try again.");
+          if (set.status === "failed") {
+            toast.error("Generation failed — try again.");
+          } else if (activeTabRef.current !== "ideas") {
+            setIdeasDot(true);
+          }
           break;
         }
         case "vote_updated": {
@@ -201,12 +241,17 @@ export default function Room() {
           setStatus("decided");
           setDecidedId(p.decided_suggestion_id);
           setCelebration(p.suggestion);
+          // Switch to missions — when the celebration is dismissed they'll land there
+          setActiveTab("missions");
+          activeTabRef.current = "missions";
+          setMissionsDot(false);
           break;
         }
         case "missions_ready": {
           const p = event.payload as { status: RoomStatus; missions: Mission[] };
           setMissions(p.missions);
           setStatus(p.status);
+          if (activeTabRef.current !== "missions") setMissionsDot(true);
           break;
         }
         case "mission_updated": {
@@ -215,8 +260,17 @@ export default function Room() {
           break;
         }
         case "template_ready": {
-          const template = event.payload as Template;
-          setRoom((prev) => (prev ? { ...prev, template } : prev));
+          const payload = event.payload as Template & { welcome_blurb?: string; conversation_starters?: string[] };
+          setRoom((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  template: payload,
+                  welcome_blurb: payload.welcome_blurb ?? prev.welcome_blurb,
+                  conversation_starters: payload.conversation_starters ?? prev.conversation_starters,
+                }
+              : prev,
+          );
           break;
         }
         case "room_closed": {
@@ -240,8 +294,12 @@ export default function Room() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
-  // Robustness: if a custom room is still being designed, poll until the template lands (in case
-  // the template_ready socket event is missed).
+  useEffect(() => {
+    if (!showChipNudge) return;
+    const timer = setTimeout(() => setShowChipNudge(false), 5000);
+    return () => clearTimeout(timer);
+  }, [showChipNudge]);
+
   useEffect(() => {
     if (!id || !room) return;
     const stillDesigning = room.template.is_custom && room.template.seed_chips.length === 0;
@@ -259,7 +317,6 @@ export default function Room() {
     return () => clearInterval(timer);
   }, [id, room]);
 
-  // Robustness: if we're waiting for approval, poll until the host lets us in (or denies us).
   useEffect(() => {
     if (!id || !room || room.me?.status !== "pending") return;
     const timer = setInterval(async () => {
@@ -274,20 +331,24 @@ export default function Room() {
     return () => clearInterval(timer);
   }, [id, room, hydrate, navigate]);
 
-  async function send(content: string) {
+  async function send(content: string, kind = "chat") {
     const text = content.trim();
     if (!id || text.length === 0) return;
     try {
-      addMessage(await api.postMessage(id, text));
+      addMessage(await api.postMessage(id, text, kind));
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Message didn't send. Try again.");
     }
   }
 
   async function chooseChip(chip: SeedChip, option: string) {
-    setAnswers((prev) => ({ ...prev, [chip.id]: option }));
+    const text = option.trim();
+    if (!text) return;
+    setAnswers((prev) => ({ ...prev, [chip.id]: text }));
     setActiveChip(null);
-    await send(`${localizeChip(chip, lang).label} ${option}`);
+    setChipCustom("");
+    setShowChipNudge(true);
+    await send(`${localizeChip(chip, lang).label}: ${text}`, "chip_response");
   }
 
   async function handleGenerate() {
@@ -295,6 +356,8 @@ export default function Room() {
     setBusy(true);
     const previous = currentSet;
     setCurrentSet({ id: "pending", generation_number: (currentSet?.generation_number ?? 0) + 1, status: "pending", suggestions: [] });
+    // Switch to ideas tab so the user watches the generation
+    switchTab("ideas");
     try {
       const res = await api.generate(id, refine);
       setGenerationsLeft(res.generations_left);
@@ -320,7 +383,6 @@ export default function Room() {
     if (!id) return;
     try {
       await api.decide(id, suggestionId);
-      // The decision_locked event drives the celebration for everyone, including us.
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't lock the decision. Try again.");
     }
@@ -463,6 +525,12 @@ export default function Room() {
     }
   }
 
+  function handleStarterClick(text: string) {
+    setDraft(text);
+    switchTab("chat");
+    setTimeout(() => draftInputRef.current?.focus(), 50);
+  }
+
   function shareInvite() {
     if (!room) return;
     const link = `${window.location.origin}/j/${room.invite_code}`;
@@ -535,7 +603,6 @@ export default function Room() {
   }
 
   const chips = [...room.template.seed_chips, ...extraChips];
-  // Once a chip is answered it drops out of the row, so only unanswered questions remain.
   const unansweredChips = chips.filter((c) => !answers[c.id]);
   const openChip = chips.find((c) => c.id === activeChip);
   const openChipOptions = openChip ? localizeChip(openChip, lang).options : [];
@@ -546,8 +613,24 @@ export default function Room() {
   const canGenerate = isAdmin && status === "deciding" && !generating && generationsLeft > 0 && !closed;
   const hasSet = Boolean(currentSet);
 
+  // Chip hint: shown until the user answers their first chip
+  const showChipHint = !postDecision && unansweredChips.length > 0 && Object.keys(answers).length === 0;
+
+  // Conversation starters: shown in empty chat until first real message is sent
+  const hasChatMessages = messages.some((m) => m.kind === "chat");
+
+  // Vote progress
+  const voterCount = new Set(
+    (currentSet?.suggestions ?? []).flatMap((s) => s.backer_ids.map(String)),
+  ).size;
+  const showVoteProgress = currentSet?.status === "complete" && !postDecision && members.length > 1;
+
+  // Missions progress badge
+  const doneMissions = missions.filter((m) => m.status === "done").length;
+
   return (
     <div className="mx-auto flex h-dvh max-w-lg flex-col bg-paper sm:border-x sm:border-border">
+      {/* ── HEADER ── */}
       <header className="shrink-0 border-b border-border bg-paper/90 px-4 pb-3 pt-4 backdrop-blur">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -587,10 +670,7 @@ export default function Room() {
                     <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
                     <div className="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg">
                       <button
-                        onClick={() => {
-                          setMenuOpen(false);
-                          setManageOpen(true);
-                        }}
+                        onClick={() => { setMenuOpen(false); setManageOpen(true); }}
                         className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-ink hover:bg-accent"
                       >
                         <Users className="size-4 text-plum" /> {t("menu.manage")}
@@ -609,10 +689,7 @@ export default function Room() {
                         </button>
                       )}
                       <button
-                        onClick={() => {
-                          setMenuOpen(false);
-                          setConfirmingDelete(true);
-                        }}
+                        onClick={() => { setMenuOpen(false); setConfirmingDelete(true); }}
                         className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-coral hover:bg-accent"
                       >
                         <Trash2 className="size-4" /> {t("menu.delete")}
@@ -625,6 +702,7 @@ export default function Room() {
           </div>
         </div>
 
+        {/* Chip row */}
         {!postDecision && (unansweredChips.length > 0 || isAdmin) && (
           <div className="mt-3">
             <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
@@ -632,7 +710,10 @@ export default function Room() {
                 <button
                   key={chip.id}
                   type="button"
-                  onClick={() => setActiveChip((cur) => (cur === chip.id ? null : chip.id))}
+                  onClick={() => {
+                    setActiveChip((cur) => (cur === chip.id ? null : chip.id));
+                    setChipCustom("");
+                  }}
                   className="flex shrink-0 items-center gap-1.5 rounded-full border border-plum/40 px-3 py-1.5 text-sm text-plum transition-colors hover:bg-plum/5"
                 >
                   {localizeChip(chip, lang).label}
@@ -648,6 +729,22 @@ export default function Room() {
                 </button>
               )}
             </div>
+
+            {/* Chip onboarding hint */}
+            <AnimatePresence>
+              {showChipHint && !activeChip && (
+                <motion.p
+                  key="chip-hint"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  className="mt-1.5 text-center text-xs text-muted-foreground"
+                >
+                  {t("room.chipHint")}
+                </motion.p>
+              )}
+            </AnimatePresence>
+
             <AnimatePresence>
               {openChip && openChipOptions.length > 0 && (
                 <motion.div
@@ -668,6 +765,30 @@ export default function Room() {
                       </button>
                     ))}
                   </div>
+                  <form
+                    className="mt-2 flex gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void chooseChip(openChip, chipCustom);
+                    }}
+                  >
+                    <Input
+                      value={chipCustom}
+                      onChange={(e) => setChipCustom(e.target.value)}
+                      placeholder={t("room.chipCustomPlaceholder")}
+                      maxLength={200}
+                      className="h-8 text-sm"
+                    />
+                    <Button
+                      type="submit"
+                      size="sm"
+                      variant="outline"
+                      disabled={chipCustom.trim().length === 0}
+                      className="shrink-0"
+                    >
+                      <Send className="size-3.5" />
+                    </Button>
+                  </form>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -675,22 +796,114 @@ export default function Room() {
         )}
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        {closed && (
-          <div className="mb-4 flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3.5 py-2.5">
-            <Archive className="size-4 shrink-0 text-plum" />
-            <p className="text-sm text-ink">{t("room.closedBanner")}</p>
-          </div>
-        )}
+      {/* ── TAB PANELS ── */}
+      <div className="flex-1 overflow-hidden">
 
-        {postDecision && winner && (
-          <div className="mb-4 flex items-center gap-2 rounded-lg border border-marigold bg-marigold/10 px-3.5 py-2.5">
-            <Check className="size-4 shrink-0 text-[#9a6212]" />
-            <p className="text-sm text-ink">{t("room.decidedBanner", { title: winner.title })}</p>
-          </div>
-        )}
+        {/* CHAT PANEL */}
+        <div className={cn("h-full overflow-y-auto px-4 py-4", activeTab !== "chat" && "hidden")}>
+          {closed && (
+            <div className="mb-4 flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3.5 py-2.5">
+              <Archive className="size-4 shrink-0 text-plum" />
+              <p className="text-sm text-ink">{t("room.closedBanner")}</p>
+            </div>
+          )}
 
-        {postDecision && (
+          {messages.filter((m) => m.kind !== "chip_response").length === 0 ? (
+            <EmptyChat
+              blurb={room.welcome_blurb}
+              starters={hasChatMessages ? [] : (room.conversation_starters ?? [])}
+              onStarterClick={handleStarterClick}
+            />
+          ) : (
+            <div className="space-y-2.5">
+              {messages.filter((m) => m.kind !== "chip_response").map((msg, i, arr) => {
+                const mine = msg.member_id === meId;
+                const showName = !mine && (i === 0 || arr[i - 1].member_id !== msg.member_id);
+                return <MessageBubble key={msg.id} message={msg} mine={mine} showName={showName} />;
+              })}
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* IDEAS PANEL */}
+        <div className={cn("h-full overflow-y-auto px-4 py-4", activeTab !== "ideas" && "hidden")}>
+          {/* Generate controls (admin only, deciding phase) */}
+          {!closed && isAdmin && status === "deciding" && (
+            <div className="mb-4 space-y-2">
+              {hasSet && generationsLeft > 0 && !generating && (
+                <Input
+                  value={refine}
+                  onChange={(e) => setRefine(e.target.value)}
+                  placeholder={t("room.refinePlaceholder")}
+                  maxLength={500}
+                />
+              )}
+              <Button
+                className="w-full justify-between"
+                variant={hasSet ? "outline" : "default"}
+                disabled={!canGenerate}
+                onClick={handleGenerate}
+              >
+                <span className="flex items-center gap-2">
+                  {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                  {generating ? t("room.generating") : hasSet ? t("room.regenerate") : t("room.generate")}
+                </span>
+                <span className="font-mono text-xs opacity-80">
+                  {generationsLeft > 0 ? t("room.left", { n: generationsLeft }) : t("room.noneLeft")}
+                </span>
+              </Button>
+              {hasSet && !generating && (
+                <p className="pb-0.5 text-center text-xs text-muted-foreground">{t("room.lockHint")}</p>
+              )}
+            </div>
+          )}
+
+          {/* Vote progress indicator */}
+          {showVoteProgress && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg bg-muted/60 px-3.5 py-2">
+              <div className="flex -space-x-1.5">
+                {members.slice(0, 5).map((m) => (
+                  <Avatar key={m.id} name={m.display_name} size={20} />
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t("room.voteProgress", { n: voterCount, total: members.length })}
+              </p>
+            </div>
+          )}
+
+          {/* Decided banner */}
+          {postDecision && winner && (
+            <div className="mb-4 flex items-center gap-2 rounded-lg border border-marigold bg-marigold/10 px-3.5 py-2.5">
+              <Check className="size-4 shrink-0 text-[#9a6212]" />
+              <p className="text-sm text-ink">{t("room.decidedBanner", { title: winner.title })}</p>
+            </div>
+          )}
+
+          {/* Suggestion cards */}
+          {hasSet ? (
+            <SuggestionDeck
+              set={currentSet}
+              members={members}
+              meId={meId}
+              isAdmin={isAdmin}
+              decided={postDecision}
+              decidedId={decidedId}
+              readOnly={closed}
+              onVote={handleVote}
+              onLock={handleLock}
+            />
+          ) : !isAdmin && status === "deciding" ? (
+            <div className="flex h-48 flex-col items-center justify-center gap-2 text-center">
+              <Lightbulb className="size-8 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">{t("room.waitingIdeas")}</p>
+            </div>
+          ) : null}
+        </div>
+
+        {/* MISSIONS PANEL */}
+        <div className={cn("h-full overflow-y-auto px-4 py-4", activeTab !== "missions" && "hidden")}>
           <MissionsBoard
             missions={missions}
             meId={meId}
@@ -702,79 +915,38 @@ export default function Room() {
             onAddMission={() => setAddMissionOpen(true)}
             onSuggestMore={handleSuggestMissions}
           />
-        )}
-
-        {messages.length === 0 && !hasSet && !postDecision ? (
-          <EmptyChat />
-        ) : (
-          <div className={postDecision ? "mt-7" : undefined}>
-            {postDecision && (
-              <div className="mb-2.5 flex items-center gap-2">
-                <span className="font-mono text-xs uppercase tracking-wide text-plum">{t("room.chat")}</span>
-                <span className="h-px flex-1 bg-border" />
-              </div>
-            )}
-            <div className="space-y-2.5">
-              {messages.map((msg, i) => {
-                const mine = msg.member_id === meId;
-                const showName = !mine && (i === 0 || messages[i - 1].member_id !== msg.member_id);
-                return <MessageBubble key={msg.id} message={msg} mine={mine} showName={showName} />;
-              })}
-            </div>
-          </div>
-        )}
-
-        {status === "deciding" && (
-          <SuggestionDeck
-            set={currentSet}
-            members={members}
-            meId={meId}
-            isAdmin={isAdmin}
-            decided={false}
-            decidedId={decidedId}
-            readOnly={closed}
-            onVote={handleVote}
-            onLock={handleLock}
-          />
-        )}
-
-        <div ref={bottomRef} />
+        </div>
       </div>
 
-      {!closed && (
-      <footer className="shrink-0 border-t border-border bg-paper">
-        {isAdmin && status === "deciding" && (
-          <div className="space-y-2 px-4 pt-3">
-            {hasSet && generationsLeft > 0 && !generating && (
-              <Input
-                value={refine}
-                onChange={(e) => setRefine(e.target.value)}
-                placeholder="Refine before regenerating (optional)…"
-                maxLength={500}
-              />
-            )}
-            <Button
-              className="w-full justify-between"
-              variant={hasSet ? "outline" : "default"}
-              disabled={!canGenerate}
-              onClick={handleGenerate}
+      {/* ── POST-CHIP NUDGE ── */}
+      <AnimatePresence>
+        {showChipNudge && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            className="mx-4 mb-2 flex shrink-0 items-center justify-between gap-3 rounded-xl bg-plum/10 px-3.5 py-2.5"
+          >
+            <p className="text-xs text-plum">{t("room.chipNudge")}</p>
+            <button
+              type="button"
+              className="shrink-0 text-xs font-semibold text-plum hover:underline"
+              onClick={() => {
+                switchTab("chat");
+                setShowChipNudge(false);
+                setTimeout(() => draftInputRef.current?.focus(), 50);
+              }}
             >
-              <span className="flex items-center gap-2">
-                {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-                {generating ? t("room.generating") : hasSet ? t("room.regenerate") : t("room.generate")}
-              </span>
-              <span className="font-mono text-xs opacity-80">
-                {generationsLeft > 0 ? t("room.left", { n: generationsLeft }) : t("room.noneLeft")}
-              </span>
-            </Button>
-            {hasSet && !generating && (
-              <p className="pb-0.5 text-center text-xs text-muted-foreground">{t("room.lockHint")}</p>
-            )}
-          </div>
+              {t("room.chipNudgeCta")} →
+            </button>
+          </motion.div>
         )}
+      </AnimatePresence>
 
+      {/* ── CHAT INPUT (only on chat tab) ── */}
+      {!closed && activeTab === "chat" && (
         <form
-          className="flex items-center gap-2 px-4 py-3"
+          className="shrink-0 flex items-center gap-2 border-t border-border bg-paper px-4 py-3"
           onSubmit={(e) => {
             e.preventDefault();
             void send(draft);
@@ -782,6 +954,7 @@ export default function Room() {
           }}
         >
           <Input
+            ref={draftInputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={postDecision ? t("room.composerDecided") : t("room.composer")}
@@ -791,9 +964,36 @@ export default function Room() {
             <Send />
           </Button>
         </form>
-      </footer>
       )}
 
+      {/* ── TAB BAR ── */}
+      <nav className="shrink-0 flex border-t border-border bg-paper">
+        <TabButton
+          active={activeTab === "chat"}
+          icon={<MessageCircle className="size-5" />}
+          label={t("tab.chat")}
+          onClick={() => switchTab("chat")}
+        />
+        <TabButton
+          active={activeTab === "ideas"}
+          icon={<Lightbulb className="size-5" />}
+          label={t("tab.ideas")}
+          dot={ideasDot}
+          onClick={() => switchTab("ideas")}
+        />
+        {postDecision && (
+          <TabButton
+            active={activeTab === "missions"}
+            icon={<ListChecks className="size-5" />}
+            label={t("tab.missions")}
+            dot={missionsDot}
+            badge={missions.length > 0 ? `${doneMissions}/${missions.length}` : undefined}
+            onClick={() => switchTab("missions")}
+          />
+        )}
+      </nav>
+
+      {/* ── OVERLAYS ── */}
       <AnimatePresence>
         {celebration && (
           <DecisionCelebration
@@ -821,13 +1021,9 @@ export default function Room() {
               </Button>
               <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
                 {deleting ? (
-                  <>
-                    <Loader2 className="animate-spin" /> {t("delete.deleting")}
-                  </>
+                  <><Loader2 className="animate-spin" /> {t("delete.deleting")}</>
                 ) : (
-                  <>
-                    <Trash2 /> {t("common.delete")}
-                  </>
+                  <><Trash2 /> {t("common.delete")}</>
                 )}
               </Button>
             </div>
@@ -865,6 +1061,49 @@ export default function Room() {
   );
 }
 
+function TabButton({
+  active,
+  icon,
+  label,
+  dot,
+  badge,
+  onClick,
+}: {
+  active: boolean;
+  icon: React.ReactNode;
+  label: string;
+  dot?: boolean;
+  badge?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "relative flex flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium transition-colors",
+        active ? "text-plum" : "text-muted-foreground hover:text-ink",
+      )}
+    >
+      <span className="relative">
+        {icon}
+        {dot && !badge && (
+          <span className="absolute -right-1 -top-1 size-2 rounded-full bg-marigold" />
+        )}
+        {badge && (
+          <span className="absolute -right-3 -top-1.5 rounded-full bg-marigold px-1 text-[10px] font-semibold leading-4 text-ink">
+            {badge}
+          </span>
+        )}
+      </span>
+      <span>{label}</span>
+      {active && (
+        <span className="absolute bottom-0 left-1/2 h-0.5 w-8 -translate-x-1/2 rounded-full bg-plum" />
+      )}
+    </button>
+  );
+}
+
 function MessageBubble({
   message,
   mine,
@@ -897,7 +1136,15 @@ function MessageBubble({
   );
 }
 
-function EmptyChat() {
+function EmptyChat({
+  blurb,
+  starters = [],
+  onStarterClick,
+}: {
+  blurb?: string;
+  starters?: string[];
+  onStarterClick?: (text: string) => void;
+}) {
   const { t } = useT();
   return (
     <div className="flex h-full flex-col items-center justify-center px-6 text-center">
@@ -905,7 +1152,26 @@ function EmptyChat() {
         <Sparkles className="size-6" />
       </div>
       <p className="mt-4 font-display text-lg font-semibold text-ink">{t("room.emptyTitle")}</p>
-      <p className="mt-1 max-w-xs text-sm text-muted-foreground">{t("room.emptyBody")}</p>
+      <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+        {blurb || t("room.emptyBody")}
+      </p>
+      {starters.length > 0 && (
+        <div className="mt-5 flex w-full max-w-xs flex-col gap-2">
+          {starters.map((s, i) => (
+            <motion.button
+              key={i}
+              type="button"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.07 }}
+              onClick={() => onStarterClick?.(s)}
+              className="rounded-xl border border-border bg-card px-4 py-2.5 text-sm text-ink transition-colors hover:bg-accent"
+            >
+              {s}
+            </motion.button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

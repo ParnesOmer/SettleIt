@@ -140,6 +140,7 @@ async def _message_outs(session: AsyncSession, room_id: uuid.UUID) -> list[Messa
             member_id=msg.member_id,
             author_name=name,
             content=msg.content,
+            kind=msg.kind,
             created_at=msg.created_at,
         )
         for msg, name in rows.all()
@@ -188,6 +189,8 @@ async def _build_room_state(
         pending_members=[MemberOut.model_validate(m) for m in pending],
         extra_chips=room.extra_chips or [],
         content_language=room.content_language,
+        welcome_blurb=room.welcome_blurb or "",
+        conversation_starters=room.conversation_starters or [],
         me=MemberOut.model_validate(me) if me is not None else None,
     )
 
@@ -203,12 +206,31 @@ async def create_room(
     if template is None:
         raise HTTPException(status_code=404, detail="That template doesn't exist.")
 
+    topic = body.topic.strip()
+    language = "he" if body.language == "he" else "en"
     invite_code = await _unique_invite_code(session)
+
+    if language == "he":
+        blurb = (
+            f"הקבוצה שלכם מחליטה על: {topic}. "
+            "ענו על השאלות למעלה ושתפו את מחשבותיכם בצ'אט — ככל שתשתפו יותר, ההצעות יהיו מדויקות יותר."
+        )
+        starters = ["מה אתם מקווים שיהיה?", "יש משהו שהייתם מעדיפים להימנע ממנו?", "מה הכי חשוב לכם?"]
+    else:
+        blurb = (
+            f"Your group is deciding {topic}. "
+            "Answer the questions and share your thoughts in the chat — "
+            "the more everyone contributes, the smarter the suggestions."
+        )
+        starters = ["What are you hoping for?", "Anything you'd like to avoid?", "What matters most to you?"]
+
     room = Room(
         template_id=template.id,
-        topic=body.topic.strip(),
+        topic=topic,
         invite_code=invite_code,
-        content_language="he" if body.language == "he" else "en",
+        content_language=language,
+        welcome_blurb=blurb,
+        conversation_starters=starters,
     )
     session.add(room)
     await session.flush()
@@ -296,6 +318,7 @@ async def preview_room(
         member_count=len(members),
         members=[m.display_name for m in members],
         already_member=already_member,
+        welcome_blurb=room.welcome_blurb or "",
     )
 
 
@@ -366,7 +389,7 @@ async def post_message(
         raise HTTPException(status_code=403, detail="Join the huddle to chat.")
     _ensure_open(room)
 
-    message = Message(room_id=room.id, member_id=me.id, content=body.content.strip())
+    message = Message(room_id=room.id, member_id=me.id, content=body.content.strip(), kind=body.kind)
     session.add(message)
     await session.flush()
     await session.refresh(message, ["created_at"])
@@ -377,6 +400,7 @@ async def post_message(
         member_id=me.id,
         author_name=me.display_name,
         content=message.content,
+        kind=message.kind,
         created_at=message.created_at,
     )
     await broadcaster.broadcast(
